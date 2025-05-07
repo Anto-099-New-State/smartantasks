@@ -5,10 +5,12 @@ const fs = require('fs');
 const brokerHost = 'broker.hivemq.com';
 const brokerPort = 1883;
 const publishTopic = 'iot/fitness/data';
-const commandTopic = 'iot/device/command';
+const commandTopic = 'iot/fitness/command';
 
+// Locations for sensor data simulation
 const locations = ['Adyar', 'T Nagar', 'Besant Nagar', 'Velachery', 'Mylapore'];
 
+// Function to generate a random UID
 function generateRandomUID() {
   const characters = 'abcdef0123456789';
   let uid = '';
@@ -20,6 +22,7 @@ function generateRandomUID() {
 
 let intervalHandle = null;
 
+// Start the publishing process
 function startPublishing(client) {
   console.log('Starting publisher interval...');
   intervalHandle = setInterval(() => {
@@ -33,8 +36,12 @@ function startPublishing(client) {
     };
 
     const csvLine = `${sensorData.uid},${sensorData.timestamp},${sensorData.loc},${sensorData.battery_voltage},${sensorData.weight},${sensorData.rep_count}\n`;
-    fs.appendFileSync('fitnessData.csv', csvLine, 'utf8');
 
+    // Write data to CSV file
+    fs.appendFileSync('fitnessData.csv', csvLine, 'utf8');
+    console.log('Data written to CSV:', csvLine);
+
+    // Publish data to the MQTT broker
     client.publish(publishTopic, JSON.stringify(sensorData), (err) => {
       if (err) {
         console.error('Publish error:', err);
@@ -45,6 +52,7 @@ function startPublishing(client) {
   }, 5000);
 }
 
+// Connect to the MQTT broker
 function connectMQTT() {
   const clientId = 'fitness_client_' + generateRandomUID();
 
@@ -83,7 +91,7 @@ function connectMQTT() {
 
       if (command === 'start') {
         if (!intervalHandle) {
-          console.log('Restarting publishing due to command.');
+          console.log('Starting publishing...');
           startPublishing(client);
         }
       }
@@ -101,4 +109,5 @@ if (!fs.existsSync('fitnessData.csv') || fs.statSync('fitnessData.csv').size ===
   fs.writeFileSync('fitnessData.csv', 'uid,timestamp,loc,battery_voltage,weight,rep_count\n');
 }
 
+// Start MQTT connection
 connectMQTT();
