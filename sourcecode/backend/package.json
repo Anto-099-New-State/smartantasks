@@ -14,5 +14,8 @@
     "express": "^5.1.0",
     "mongoose": "^8.13.2",
     "mqtt": "^5.11.0"
+  },
+  "devDependencies": {
+    "mini-css-extract-plugin": "^2.9.2"
   }
 }
