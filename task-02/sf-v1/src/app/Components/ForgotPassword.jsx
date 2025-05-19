@@ -1,45 +1,63 @@
-import React from 'react';
-import Image from 'next/image';
-import { ChevronLeft } from 'lucide-react';
-import Link from 'next/link';
+'use client';
 
-const ForgotPassword = () => {
+import { useState } from 'react';
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { auth } from '../api/firebase';
+import LoadingOverlay from '../components/LoadingOverlay'; // ✅ Import the loading overlay
+
+const RequestResetPage = () => {
+  const [email, setEmail] = useState('');
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false); // ✅ loading state
+
+  const handleResetRequest = async () => {
+    setLoading(true); // ✅ start loading
+    try {
+      await sendPasswordResetEmail(auth, email, {
+        url: 'http://localhost:3000/auth-verf',
+        handleCodeInApp: true,
+      });
+      setMessage('Password reset email sent! Check your inbox.');
+      setError('');
+    } catch (err) {
+      setError(err.message);
+      setMessage('');
+    } finally {
+      setLoading(false); 
+    }
+  };
+
   return (
-    <div className="relative bg-[url('/img_back.png')] bg-cover bg-center min-h-screen w-full overflow-hidden bg-[#0C1E1D] text-white flex items-center justify-center px-6">
+    <div className="min-h-screen bg-[url('')] flex flex-row items-start  text-white relative">
+      {loading && <LoadingOverlay />}
+      <div className="p-5 rounded-lg my-20 mx-20 w-full max-w-md">
+        <h2 className="text-2xl font-bold mb-1 text-green-300">Reset Password</h2>
+        <p className="py-4 mb-6 text-white">
+          An email will be sent to your verified email address.
+          Click on the link to reset your password.
+        </p>
 
+        <input
+          type="email"
+          placeholder="Enter your email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="w-full p-2 mb-4 ring-1 ring-white rounded-2xl bg-gray-700 text-white focus:outline-none"
+        />
 
-      {/* Content container */}
-      <div className="flex flex-col md:flex-row items-center justify-between max-w-5xl w-full">
-        <div className="w-full md:w-1/2 mb-12 md:mb-0 px-6">
-          <button className="mb-6 flex items-center space-x-2 text-white hover:text-green-300">
-            <ChevronLeft className="h-6 w-6" />
-          </button>
+        {error && <p className="text-red-400 mb-2 text-sm">{error}</p>}
+        {message && <p className="text-green-400 mb-2 text-sm">{message}</p>}
 
-          <h2 className="text-2xl font-semibold mb-2 text-green-200">Forgot password</h2>
-          <p className="text-gray-200 mb-2">
-            Please enter your email to reset the password
-          </p>
-          <p className="text-red-400 text-sm mb-6">
-            an email will be sent to the given address, <br />
-            kindly verify using the correct mail id.
-          </p>
-
-          <div className="mb-6">
-            <label className="block mb-2 text-white font-medium">Your Email</label>
-            <input
-              type="email"
-              className="w-full px-4 py-2 rounded-md bg-transparent border border-white text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-400"
-              placeholder="example@mail.com"
-            />
-          </div>
-
-          <button className="bg-green-300 hover:bg-green-400 text-black font-semibold px-6 py-2 rounded-full">
-                <Link href="/auth" className="">Confirm Password</Link>
-          </button>
-        </div>
+        <button
+          onClick={handleResetRequest}
+          className="w-full bg-green-400 text-black py-2 rounded-2xl hover:bg-green-300 transition"
+        >
+          Send Reset Email
+        </button>
       </div>
     </div>
   );
 };
 
-export default ForgotPassword;
+export default RequestResetPage;
