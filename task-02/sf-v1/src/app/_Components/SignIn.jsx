@@ -1,46 +1,86 @@
-'use client'; // required if using Next.js App Router
-
-import React, { useState } from 'react';
+'use client';
+import React, { use, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { FaEnvelope, FaLock } from 'react-icons/fa';
 import { FcGoogle } from 'react-icons/fc';
 import { signInWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
-import { auth, googleProvider } from '../api/firebase'; // adjust path as needed
+import { auth, googleProvider } from '../api/firebase';
 import { useRouter } from 'next/navigation';
+import LoadingOverlay from './LoadingOverlay'; // Import overlay
+import { onAuthStateChanged } from "firebase/auth";
+import { toast } from 'sonner';
 
 function SignInForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false); // Loading state
   const router = useRouter();
 
+  useEffect((
+   onAuthStateChanged(auth, (user) =>{
+    if(user){
+      console.log("User log",user.email);
+      router.push('dashboard');
+    }
+    else{
+      console.log("no active session");
+    }
+   })
+  ),[])
+
   const handleEmailLogin = async () => {
+    setLoading(true); // Start loading
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      router.push('/dashboard'); // change to your protected route
+      const userCredential =  await signInWithEmailAndPassword(auth, email, password);
+      
+       const idToken = await userCredential.user.getIdToken();
+      console.log(idToken);
+    // Send ID token to server
+    await fetch('http://localhost:5000/sessionLogin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      body: JSON.stringify({ idToken }),
+    });
+      router.push('/dashboard');
     } catch (err) {
       setError(err.message);
+    } finally {
+      setLoading(false); // Stop loading
     }
   };
 
   const handleGoogleLogin = async () => {
+    setLoading(true);
     try {
-      await signInWithPopup(auth, googleProvider);
+      const result = await signInWithPopup(auth, googleProvider);
+      const idToken = await result.user.getIdToken();
+      await fetch('http://localhost:5000/sessionLogin',{
+        method: 'POST',
+        headers: {'Content-Type' : 'application/json'},
+         credentials: 'include',
+        body: JSON.stringify({idToken}),
+      });
       router.push('/dashboard');
     } catch (err) {
       setError(err.message);
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="flex bg-[url('')] bg-gradient-to-r from-[#0D1A1C] to-[#1B2C2E] text-white">
-      <div className="flex flex-col px-6 mx-30 my-8 w-full max-w-sm">
+    <div className="flex bg-[url('')] bg-gradient-to-r from-[#0D1A1C] to-[#1B2C2E] text-white relative min-h-screen">
+      {loading && <LoadingOverlay />} 
+
+      <div className="flex flex-col px-6 mx-30 my-8 w-full max-w-sm z-10">
         <h1 className="text-3xl font-bold text-[#A4FEB7] mb-1">Sign in</h1>
         <p className="text-gray-300 mb-4">
           Please login to continue to your account.
         </p>
 
-        {error && <p className="text-red-400 text-sm mb-2">{error}</p>}
 
         <div className="space-y-4">
           {/* Email Field */}

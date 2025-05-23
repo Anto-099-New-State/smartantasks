@@ -1,6 +1,6 @@
 import React from 'react'
 import Image from 'next/image'
-import ForgotPassword from '../Components/ForgotPassword'
+import ForgotPassword from '../_Components/ForgotPassword'
 function Design() {
   return (
     <div className="min-h-screen bg-[url('/img_back.png')] bg-cover bg-center flex flex-col justify-between px-6 py-4">

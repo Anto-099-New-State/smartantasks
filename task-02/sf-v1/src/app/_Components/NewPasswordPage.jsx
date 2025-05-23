@@ -5,15 +5,17 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { ArrowBigLeft } from 'lucide-react';
 import { confirmPasswordReset } from 'firebase/auth';
 import { auth } from '../api/firebase';
+import LoadingOverlay from './LoadingOverlay'; // ✅ Import
 
 const NewPasswordPage = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(false); // ✅ loading state
+
   const params = useSearchParams();
   const router = useRouter();
-
   const oobCode = params.get('oobCode');
 
   const handleSubmit = async () => {
@@ -30,6 +32,7 @@ const NewPasswordPage = () => {
       return;
     }
 
+    setLoading(true);
     try {
       await confirmPasswordReset(auth, oobCode, password);
       setMessage('Password updated successfully!');
@@ -37,11 +40,15 @@ const NewPasswordPage = () => {
       setTimeout(() => router.push('/conf-pag'), 2000);
     } catch (err) {
       setError(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <div className="min-h-screen bg-[url('')] flex items-center justify-center px-4 bg-gradient-to-br from-green-950 to-black text-white relative">
+      {loading && <LoadingOverlay />}
+
       <div className="absolute top-8 left-6 bg-white text-sm font-medium border rounded-4xl p-3 cursor-pointer">
         <span className="text-green-600 text-2xl">
           <ArrowBigLeft />

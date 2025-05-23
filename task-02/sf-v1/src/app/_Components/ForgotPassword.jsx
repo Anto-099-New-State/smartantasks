@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../api/firebase';
-import LoadingOverlay from '../components/LoadingOverlay'; // ✅ Import the loading overlay
+import LoadingOverlay from './LoadingOverlay'; // ✅ Import the loading overlay
 
 const RequestResetPage = () => {
   const [email, setEmail] = useState('');

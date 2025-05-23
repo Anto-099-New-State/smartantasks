@@ -1,10 +1,10 @@
 import React from 'react'
-import Design from '../_Components/Design'
+import DashBoard from '../_Components/DashBoard'
 
 function page() {
   return (
     <div>
-        <Design />
+        <DashBoard />
     </div>
   )
 }
