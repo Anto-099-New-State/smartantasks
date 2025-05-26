@@ -1,4 +1,5 @@
-import React from 'react';
+"use client"
+import React, { useEffect, useState } from 'react';
 import { 
   Grid3X3,
   Search,
@@ -8,7 +9,80 @@ import {
   Edit
 } from 'lucide-react';
 
-const MainTable = ({ data = [], searchTerm = '', setSearchTerm, onEdit, onDelete }) => {
+import { 
+  collection,
+  onSnapshot,
+  doc,
+  updateDoc,
+  deleteDoc,
+  query,
+  orderBy
+} from 'firebase/firestore';
+import { db } from '../api/firebase';  // Your firebase config and initialization file
+import { useRouter } from 'next/navigation';
+
+const MainTable = ({ searchTerm, setSearchTerm , onNavigateToOrg }) => {
+  const [data, setData] = useState([]);
+    const router = useRouter();
+  // Firestore realtime listener
+  useEffect(() => {
+    const q = query(collection(db, 'organizations'), orderBy('name', 'asc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const orgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setData(orgs);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const createSlug = (name) => {
+    return name
+      .toLowerCase()
+      .replace(/[^a-z0-9 -]/g, '') // Remove special characters
+      .replace(/\s+/g, '-')        // Replace spaces with hyphens
+      .replace(/-+/g, '-')         // Replace multiple hyphens with single hyphen
+      .trim();
+  };
+
+  const handleRowClick = (organization, event) => {
+    // Don't navigate if clicking on action buttons
+    if (event.target.closest('button')) {
+      return;
+    }
+    
+    const slug = createSlug(organization.id);
+    const orgWithSlug = { ...organization, slug };
+    // Call parent function to handle navigation
+    if (onNavigateToOrg) {
+      onNavigateToOrg(orgWithSlug);
+    }
+    router.push(`/organizations/${slug}`);
+
+    // In a real app, you would use React Router or Next.js router
+    console.log(`Navigating to: /organizations/${slug}`);
+  };
+  // Functions to update Firestore document (edit)
+  const handleEdit = async (user) => {
+    // For demo: toggle status Active/Inactive
+    try {
+      const userRef = doc(db, 'organizations', user.id);
+      const newStatus = user.status === 'Active' ? 'Inactive' : 'Active';
+      await updateDoc(userRef, { status: newStatus });
+    } catch (error) {
+      console.error('Error updating document:', error);
+    }
+  };
+
+  // Delete Firestore document
+  const handleDelete = async (userId) => {
+    try {
+      await deleteDoc(doc(db, 'organizations', userId));
+    } catch (error) {
+      console.error('Error deleting document:', error);
+    }
+  };
+
+  // Utility functions you already have (status color, avatar color)...
+
   const getStatusColor = (status) => {
     switch (status) {
       case 'Active':
@@ -37,24 +111,12 @@ const MainTable = ({ data = [], searchTerm = '', setSearchTerm, onEdit, onDelete
     return colors[name.charCodeAt(0) % colors.length];
   };
 
-  // Add safety check - ensure data is an array before filtering
+  // Filter data by search term
   const filteredData = Array.isArray(data) ? data.filter(user =>
     user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     user.role?.toLowerCase().includes(searchTerm.toLowerCase())
   ) : [];
-
-  const handleEdit = (user) => {
-    if (onEdit) {
-      onEdit(user);
-    }
-  };
-
-  const handleDelete = (userId) => {
-    if (onDelete) {
-      onDelete(userId);
-    }
-  };
 
   return (
     <div className="flex-1 p-6 h-full overflow-hidden flex flex-col">
@@ -89,47 +151,36 @@ const MainTable = ({ data = [], searchTerm = '', setSearchTerm, onEdit, onDelete
           <table className="w-full">
             <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
+                {/* Your columns */}
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   <div className="flex items-center space-x-1">
                     <span>User</span>
                     <ChevronDown className="w-3 h-3" />
                   </div>
                 </th>
+                {/* Add other headers (Status, Permissions, Email, Tags, Actions) */}
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  <div className="flex items-center space-x-1">
-                    <span>Status</span>
-                    <ChevronDown className="w-3 h-3" />
-                  </div>
+                  Status
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  <div className="flex items-center space-x-1">
-                    <span>Permissions</span>
-                    <ChevronDown className="w-3 h-3" />
-                  </div>
+                  Permissions
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  <div className="flex items-center space-x-1">
-                    <span>Email</span>
-                    <ChevronDown className="w-3 h-3" />
-                  </div>
+                  Email
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  <div className="flex items-center space-x-1">
-                    <span>Tags</span>
-                    <ChevronDown className="w-3 h-3" />
-                  </div>
+                  Tags
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  <div className="flex items-center space-x-1">
-                    <span>Actions</span>
-                    <ChevronDown className="w-3 h-3" />
-                  </div>
+                  Actions
                 </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredData.map((user) => (
-                <tr key={user.id} className="hover:bg-gray-50">
+                <tr key={user.id} 
+                                  onClick={(e) => handleRowClick(user, e)}
+                className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-medium ${getAvatarColor(user.name || '')}`}>
@@ -160,7 +211,7 @@ const MainTable = ({ data = [], searchTerm = '', setSearchTerm, onEdit, onDelete
                         </span>
                       ))}
                       <span className="inline-flex items-center justify-center w-6 h-6 text-xs font-medium bg-gray-100 text-gray-600 rounded-full">
-                        +4
+                        +{(user.tags?.length || 0) > 4 ? (user.tags.length - 4) : 0}
                       </span>
                     </div>
                   </td>
@@ -199,27 +250,6 @@ const MainTable = ({ data = [], searchTerm = '', setSearchTerm, onEdit, onDelete
             </tbody>
           </table>
         </div>
-
-        {/* Pagination - Fixed at bottom */}
-        {filteredData.length > 0 && (
-          <div className="px-6 py-3 border-t border-gray-200 flex-shrink-0">
-            <div className="flex items-center justify-center space-x-2">
-              <button className="px-3 py-1 text-sm text-gray-500 hover:text-gray-700">
-                « Previous
-              </button>
-              <button className="px-3 py-1 text-sm bg-blue-600 text-white rounded">1</button>
-              <button className="px-3 py-1 text-sm text-gray-500 hover:text-gray-700">2</button>
-              <button className="px-3 py-1 text-sm text-gray-500 hover:text-gray-700">3</button>
-              <button className="px-3 py-1 text-sm text-gray-500 hover:text-gray-700">4</button>
-              <span className="px-3 py-1 text-sm text-gray-500">...</span>
-              <button className="px-3 py-1 text-sm text-gray-500 hover:text-gray-700">13</button>
-              <button className="px-3 py-1 text-sm text-gray-500 hover:text-gray-700">14</button>
-              <button className="px-3 py-1 text-sm text-gray-500 hover:text-gray-700">
-                Next »
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

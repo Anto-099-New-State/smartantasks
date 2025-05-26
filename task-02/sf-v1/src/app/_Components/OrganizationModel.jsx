@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
+import { db } from '../api/firebase'; // Adjust the path accordingly
+import { collection, doc, setDoc, updateDoc } from "firebase/firestore";
 
-const OrganizationModal = ({ isOpen, onClose, onSubmit, initialData = null }) => {
+
+const OrganizationModal = ({ isOpen, onClose, initialData = null }) => {
   const [formData, setFormData] = useState({
     email: initialData?.email || '',
     firstName: initialData?.firstName || '',
@@ -18,7 +21,6 @@ const OrganizationModal = ({ isOpen, onClose, onSubmit, initialData = null }) =>
 
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-
   const validateForm = () => {
     const newErrors = {};
     
@@ -59,7 +61,6 @@ const OrganizationModal = ({ isOpen, onClose, onSubmit, initialData = null }) =>
       [name]: value
     }));
     
-    // Clear error when user starts typing
     if (errors[name]) {
       setErrors(prev => ({
         ...prev,
@@ -76,20 +77,27 @@ const OrganizationModal = ({ isOpen, onClose, onSubmit, initialData = null }) =>
     }
 
     setIsSubmitting(true);
-    
+
     try {
-      // Prepare data for submission
       const userData = {
         ...formData,
         name: `${formData.firstName} ${formData.lastName}`,
         avatar: formData.firstName.charAt(0).toUpperCase(),
-        id: initialData?.id || Date.now() // Generate ID for new users
       };
-      
-      await onSubmit(userData);
+
+      if (initialData?.id) {
+        // Update existing document
+        const docRef = doc(db, "organizations", initialData.id);
+        await updateDoc(docRef, userData);
+      } else {
+        // Create new document with auto-generated ID
+        const id = Date.now().toString();
+        const docRef = doc(db, "organizations", id);
+        await setDoc(docRef, { ...userData, id });
+      }
+
       onClose();
-      
-      // Reset form
+
       setFormData({
         email: '',
         firstName: '',
@@ -276,7 +284,7 @@ const OrganizationModal = ({ isOpen, onClose, onSubmit, initialData = null }) =>
                 name="zip"
                 value={formData.zip}
                 onChange={handleChange}
-                placeholder="ZIP"
+                placeholder="ZIP code"
                 className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                   errors.zip ? 'border-red-500' : 'border-gray-300'
                 }`}
@@ -298,17 +306,10 @@ const OrganizationModal = ({ isOpen, onClose, onSubmit, initialData = null }) =>
               onChange={handleChange}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
-              <option value="Administrator">Administrator</option>
-              <option value="Human resources">Human Resources</option>
-              <option value="Product Designer">Product Designer</option>
-              <option value="UI Designer">UI Designer</option>
-              <option value="UX Designer">UX Designer</option>
-              <option value="Backend">Backend Developer</option>
-              <option value="Frontend">Frontend Developer</option>
-              <option value="Devops">DevOps</option>
-              <option value="Sales manager">Sales Manager</option>
-              <option value="Accounting">Accounting</option>
               <option value="User">User</option>
+              <option value="Admin">Admin</option>
+              <option value="Owner">Owner</option>
+              <option value="Contributor">Contributor</option>
             </select>
           </div>
 
@@ -325,27 +326,38 @@ const OrganizationModal = ({ isOpen, onClose, onSubmit, initialData = null }) =>
             >
               <option value="Active">Active</option>
               <option value="Inactive">Inactive</option>
-              <option value="Onboarding">Onboarding</option>
+              <option value="Pending">Pending</option>
             </select>
           </div>
 
-          {/* Submit Button */}
-          <div className="flex justify-end pt-4">
-            <button
-              type="button"
-              onClick={handleClose}
-              className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg mr-3 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isSubmitting ? 'Creating...' : (initialData ? 'Update' : 'Create')}
-            </button>
+          {/* Tags */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Tags
+            </label>
+            <input
+              type="text"
+              name="tags"
+              value={formData.tags.join(', ')}
+              onChange={(e) =>
+                setFormData(prev => ({
+                  ...prev,
+                  tags: e.target.value.split(',').map(tag => tag.trim())
+                }))
+              }
+              placeholder="Comma separated tags"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
           </div>
+
+          {/* Submit Button */}
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {isSubmitting ? 'Submitting...' : (initialData ? 'Update' : 'Create')}
+          </button>
         </form>
       </div>
     </div>
