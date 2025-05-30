@@ -19,17 +19,20 @@ import {
   orderBy
 } from 'firebase/firestore';
 import { db } from '../api/firebase';  // Your firebase config and initialization file
-import { useRouter } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 
 const MainTable = ({ searchTerm, setSearchTerm , onNavigateToOrg }) => {
   const [data, setData] = useState([]);
     const router = useRouter();
   // Firestore realtime listener
+  
+
   useEffect(() => {
     const q = query(collection(db, 'organizations'), orderBy('name', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const orgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setData(orgs);
+      console.log(orgs);
     });
     return () => unsubscribe();
   }, []);

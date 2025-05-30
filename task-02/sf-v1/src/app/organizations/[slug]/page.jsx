@@ -16,6 +16,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '../../api/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
+import { useParams } from 'next/navigation';
 
 const GymManagementDashboard = () => {
   const [viewMode, setViewMode] = useState('list');
@@ -40,6 +41,11 @@ const GymManagementDashboard = () => {
     growthRate: "+18%"
   };
 
+  const params = useParams();
+    const id = params.slug;
+  
+    console.log(id);
+
   // Initial gym form state
   const initialGymState = {
     name: '',
@@ -63,7 +69,8 @@ const GymManagementDashboard = () => {
         setUser(currentUser);
         // Get organization ID from user claims or custom claims
         const token = await currentUser.getIdTokenResult();
-        setOrganizationId(token.claims.organizationId || 'default-org');
+        console.log(token);
+        setOrganizationId(id || 'default-org');
       } else {
         setUser(null);
         setOrganizationId(null);
