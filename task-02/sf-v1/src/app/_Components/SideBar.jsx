@@ -5,8 +5,8 @@ import {
   Users, 
   HardDrive,
   Menu,
-  X,
-  LogOut
+  LogOut,
+  ArrowLeftCircleIcon
 } from 'lucide-react';
 
 const Sidebar = ({ activeTab, setActiveTab }) => {
@@ -32,7 +32,7 @@ const Sidebar = ({ activeTab, setActiveTab }) => {
           onClick={() => setIsCollapsed(!isCollapsed)}
           className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
         >
-          {isCollapsed ? <Menu className="w-5 h-5" /> : <X className="w-5 h-5" />}
+          {isCollapsed ? <Menu className="w-5 h-5" /> : <ArrowLeftCircleIcon className="w-5 h-5" />}
         </button>
       </div>
       

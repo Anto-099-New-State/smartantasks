@@ -1,4 +1,4 @@
-// components/Hardware.jsx - Complete Version with Firestore Integration
+// components/Hardware.jsx - Complete Version with Organization Search
 import React, { useState } from 'react';
 
 const Hardware = ({ 
@@ -14,8 +14,30 @@ const Hardware = ({
   
   // Search and filter states
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('All');
-  const [organizationFilter, setOrganizationFilter] = useState('All');
+  const [showFilters, setShowFilters] = useState(false);
+  
+  // Organization search state
+  const [orgSearchTerm, setOrgSearchTerm] = useState('');
+  
+  // Filter states with checkboxes
+  const [assignmentFilters, setAssignmentFilters] = useState({
+    assigned: false,
+    unassigned: false
+  });
+  
+  const [organizationFilters, setOrganizationFilters] = useState({});
+  
+  const [stickerStatusFilters, setStickerStatusFilters] = useState({
+    pending: false,
+    applied: false,
+    notApplied: false
+  });
+  
+  const [testingStatusFilters, setTestingStatusFilters] = useState({
+    notTested: false,
+    passed: false,
+    failed: false
+  });
 
   // Modal and form states
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -38,6 +60,24 @@ const Hardware = ({
     remarks: ''
   });
 
+  // Initialize organization filters when organizations change
+  React.useEffect(() => {
+    const orgFilters = {};
+    organizations.forEach(org => {
+      orgFilters[org.name] = false;
+    });
+    setOrganizationFilters(orgFilters);
+  }, [organizations]);
+
+  // Get filtered organizations for the filter panel
+  const getFilteredOrganizations = () => {
+    if (!orgSearchTerm) return organizations;
+    
+    return organizations.filter(org =>
+      org.name.toLowerCase().includes(orgSearchTerm.toLowerCase())
+    );
+  };
+
   // Get filtered devices based on active tab and filters
   const getFilteredDevices = () => {
     let filteredDevices = devices.filter(device => 
@@ -55,27 +95,100 @@ const Hardware = ({
       );
     }
 
-    // Apply status filter
-    if (statusFilter !== 'All') {
+    // Apply assignment filters
+    const activeAssignmentFilters = Object.keys(assignmentFilters).filter(key => assignmentFilters[key]);
+    if (activeAssignmentFilters.length > 0) {
+      filteredDevices = filteredDevices.filter(device => {
+        if (activeAssignmentFilters.includes('assigned') && (device.organization && device.organization !== 'Unassigned')) {
+          return true;
+        }
+        if (activeAssignmentFilters.includes('unassigned') && (device.organization === 'Unassigned' || !device.organization)) {
+          return true;
+        }
+        return false;
+      });
+    }
+
+    // Apply organization filters
+    const activeOrgFilters = Object.keys(organizationFilters).filter(key => organizationFilters[key]);
+    if (activeOrgFilters.length > 0) {
       filteredDevices = filteredDevices.filter(device => 
-        device.status === statusFilter
+        activeOrgFilters.includes(device.organization)
       );
     }
 
-    // Apply organization filter
-    if (organizationFilter !== 'All') {
-      if (organizationFilter === 'Unassigned') {
-        filteredDevices = filteredDevices.filter(device => 
-          device.organization === 'Unassigned' || !device.organization
-        );
-      } else {
-        filteredDevices = filteredDevices.filter(device => 
-          device.organization === organizationFilter
-        );
-      }
+    // Apply sticker status filters
+    const activeStickerFilters = Object.keys(stickerStatusFilters).filter(key => stickerStatusFilters[key]);
+    if (activeStickerFilters.length > 0) {
+      filteredDevices = filteredDevices.filter(device => {
+        const status = device.stickerStatus?.toLowerCase();
+        if (activeStickerFilters.includes('pending') && status === 'pending') return true;
+        if (activeStickerFilters.includes('applied') && status === 'applied') return true;
+        if (activeStickerFilters.includes('notApplied') && status === 'not applied') return true;
+        return false;
+      });
+    }
+
+    // Apply testing status filters
+    const activeTestingFilters = Object.keys(testingStatusFilters).filter(key => testingStatusFilters[key]);
+    if (activeTestingFilters.length > 0) {
+      filteredDevices = filteredDevices.filter(device => {
+        const testing = device.testing?.toLowerCase();
+        if (activeTestingFilters.includes('notTested') && testing === 'not tested yet') return true;
+        if (activeTestingFilters.includes('passed') && testing === 'passed') return true;
+        if (activeTestingFilters.includes('failed') && testing === 'failed') return true;
+        return false;
+      });
     }
 
     return filteredDevices;
+  };
+
+  // Handle filter changes
+  const handleAssignmentFilterChange = (key) => {
+    setAssignmentFilters(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
+
+  const handleOrganizationFilterChange = (key) => {
+    setOrganizationFilters(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
+
+  const handleStickerStatusFilterChange = (key) => {
+    setStickerStatusFilters(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
+
+  const handleTestingStatusFilterChange = (key) => {
+    setTestingStatusFilters(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
+
+  // Clear all filters
+  const clearAllFilters = () => {
+    setAssignmentFilters({ assigned: false, unassigned: false });
+    setOrganizationFilters(Object.keys(organizationFilters).reduce((acc, key) => ({ ...acc, [key]: false }), {}));
+    setStickerStatusFilters({ pending: false, applied: false, notApplied: false });
+    setTestingStatusFilters({ notTested: false, passed: false, failed: false });
+    setSearchTerm('');
+    setOrgSearchTerm('');
+  };
+
+  // Count active filters
+  const getActiveFilterCount = () => {
+    return Object.values(assignmentFilters).filter(Boolean).length +
+           Object.values(organizationFilters).filter(Boolean).length +
+           Object.values(stickerStatusFilters).filter(Boolean).length +
+           Object.values(testingStatusFilters).filter(Boolean).length;
   };
 
   // Handle form input changes
@@ -115,6 +228,9 @@ const Hardware = ({
         ? organizations.find(org => org.name === formData.organization)
         : null;
       
+      // Auto-determine status based on assignment
+      const deviceStatus = formData.organization === 'Unassigned' ? 'Inventory' : 'Assigned';
+      
       const newDevice = {
         deviceName: formData.deviceId,
         serial: Math.random().toString().substring(2, 12),
@@ -124,7 +240,7 @@ const Hardware = ({
         testing: formData.testingStatus,
         organization: formData.organization,
         organizationId: selectedOrg ? selectedOrg.id : null,
-        status: 'Inventory', // Default status for new devices
+        status: deviceStatus, // Auto-set based on assignment
         modelNo: formData.modelNo,
         lens: formData.lens || 'N/A',
         avatar: activeHardwareTab === 'Camera' ? '📷' : '📊'
@@ -174,6 +290,9 @@ const Hardware = ({
         ? organizations.find(org => org.name === formData.organization)
         : null;
       
+      // Auto-determine status based on assignment
+      const deviceStatus = formData.organization === 'Unassigned' ? 'Inventory' : 'Assigned';
+      
       const updatedDevice = {
         ...editingDevice,
         deviceName: formData.deviceId,
@@ -183,7 +302,8 @@ const Hardware = ({
         modelNo: formData.modelNo,
         lens: formData.lens,
         stickerStatus: formData.stickerStatus,
-        testing: formData.testingStatus
+        testing: formData.testingStatus,
+        status: deviceStatus // Auto-update status based on assignment
       };
       
       // Call the parent's update function (this will handle Firestore)
@@ -256,6 +376,7 @@ const Hardware = ({
   };
 
   const filteredDevices = getFilteredDevices();
+  const filteredOrganizations = getFilteredOrganizations();
   const deviceCounts = {
     camera: devices.filter(d => d.deviceType === 'camera').length,
     sensor: devices.filter(d => d.deviceType === 'sensor').length
@@ -266,7 +387,8 @@ const Hardware = ({
     total: devices.length,
     unassigned: devices.filter(d => d.organization === 'Unassigned' || !d.organization).length,
     assigned: devices.filter(d => d.organization && d.organization !== 'Unassigned').length,
-    inventory: devices.filter(d => d.status === 'Inventory').length
+    inventory: devices.filter(d => d.status === 'Inventory').length,
+    active: devices.filter(d => d.status === 'Active').length
   };
 
   // Loading state component
@@ -278,7 +400,7 @@ const Hardware = ({
   );
 
   return (
-    <div className="p-6">
+    <div className="p-6 overflow-y-scroll">
       
       {/* Hardware Header */}
       <div className="mb-6">
@@ -318,6 +440,7 @@ const Hardware = ({
           <p className="text-2xl font-bold text-purple-600">
             {isLoading ? '...' : inventoryStats.inventory}
           </p>
+          <p className="text-xs text-gray-400">Unassigned devices</p>
         </div>
       </div>
 
@@ -333,8 +456,7 @@ const Hardware = ({
                 onClick={() => {
                   setActiveHardwareTab(tab);
                   setSearchTerm(''); // Reset search when switching tabs
-                  setStatusFilter('All'); // Reset filters
-                  setOrganizationFilter('All');
+                  clearAllFilters(); // Clear all filters when switching tabs
                 }}
                 className={`py-4 px-1 border-b-2 font-medium text-sm ${
                   activeHardwareTab === tab
@@ -353,9 +475,9 @@ const Hardware = ({
           </nav>
         </div>
 
-        {/* Filters and Search */}
+        {/* Search and Filters */}
         <div className="p-6 border-b border-gray-200">
-          <div className="flex flex-wrap gap-4">
+          <div className="flex flex-wrap gap-4 items-center">
             {/* Search */}
             <div className="flex-1 min-w-80">
               <input
@@ -368,36 +490,33 @@ const Hardware = ({
               />
             </div>
 
-            {/* Status Filter */}
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            {/* Filter Toggle Button */}
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`px-4 py-2 border rounded-lg transition-colors flex items-center gap-2 ${
+                showFilters ? 'bg-blue-100 border-blue-300 text-blue-700' : 'border-gray-300 hover:bg-gray-50'
+              }`}
               disabled={isLoading}
             >
-              <option value="All">All Status</option>
-              <option value="Inventory">Inventory</option>
-              <option value="Active">Active</option>
-              <option value="Assigned">Assigned</option>
-              <option value="Pending">Pending</option>
-              <option value="Inactive">Inactive</option>
-            </select>
+              <span className="text-lg">🔍</span>
+              Filters
+              {getActiveFilterCount() > 0 && (
+                <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full">
+                  {getActiveFilterCount()}
+                </span>
+              )}
+            </button>
 
-            {/* Organization Filter */}
-            <select
-              value={organizationFilter}
-              onChange={(e) => setOrganizationFilter(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              disabled={isLoading}
-            >
-              <option value="All">All Assignments</option>
-              <option value="Unassigned">Unassigned</option>
-              {organizations.map((org) => (
-                <option key={org.id} value={org.name}>
-                  {org.name}
-                </option>
-              ))}
-            </select>
+            {/* Clear Filters Button */}
+            {getActiveFilterCount() > 0 && (
+              <button
+                onClick={clearAllFilters}
+                className="px-4 py-2 text-red-600 hover:bg-red-50 border border-red-300 rounded-lg transition-colors"
+                disabled={isLoading}
+              >
+                Clear All
+              </button>
+            )}
 
             {/* Add Device Button */}
             <button
@@ -418,12 +537,175 @@ const Hardware = ({
               <>
                 Showing {filteredDevices.length} of {devices.filter(d => d.deviceType === activeHardwareTab.toLowerCase()).length} {activeHardwareTab.toLowerCase()}s
                 {searchTerm && ` matching "${searchTerm}"`}
-                {statusFilter !== 'All' && ` with status "${statusFilter}"`}
-                {organizationFilter !== 'All' && ` ${organizationFilter === 'Unassigned' ? 'unassigned' : `assigned to "${organizationFilter}"`}`}
+                {getActiveFilterCount() > 0 && ` with ${getActiveFilterCount()} filter${getActiveFilterCount() > 1 ? 's' : ''} applied`}
               </>
             )}
           </div>
         </div>
+
+        {/* Expandable Filter Panel */}
+        {showFilters && (
+          <div className="border-b border-gray-200 bg-gray-50">
+            <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                
+                {/* Assignment Filters */}
+                <div>
+                  <h3 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
+                    <span className="text-lg">📋</span>
+                    ASSIGNMENT
+                  </h3>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={assignmentFilters.assigned}
+                        onChange={() => handleAssignmentFilterChange('assigned')}
+                        className="rounded border-gray-300 focus:ring-blue-500"
+                      />
+                      <span className="text-sm">Assigned ({devices.filter(d => d.organization && d.organization !== 'Unassigned').length})</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={assignmentFilters.unassigned}
+                        onChange={() => handleAssignmentFilterChange('unassigned')}
+                        className="rounded border-gray-300 focus:ring-blue-500"
+                      />
+                      <span className="text-sm">Unassigned ({devices.filter(d => d.organization === 'Unassigned' || !d.organization).length})</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Organization Filters with Search */}
+                <div>
+                  <h3 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
+                    <span className="text-lg">🏢</span>
+                    ORGANIZATION
+                  </h3>
+                  
+                  {/* Organization Search */}
+                  <div className="mb-3">
+                    <input
+                      type="text"
+                      placeholder="Search organizations..."
+                      value={orgSearchTerm}
+                      onChange={(e) => setOrgSearchTerm(e.target.value)}
+                      className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  
+                  {/* Organization Checkboxes */}
+                  <div className="space-y-2 max-h-40 overflow-y-auto border border-gray-200 rounded p-2 bg-white">
+                    {filteredOrganizations.length > 0 ? (
+                      filteredOrganizations.map((org) => {
+                        const count = devices.filter(d => d.organization === org.name).length;
+                        return (
+                          <label key={org.id} className="flex items-center gap-2 cursor-pointer p-1 hover:bg-gray-50 rounded">
+                            <input
+                              type="checkbox"
+                              checked={organizationFilters[org.name] || false}
+                              onChange={() => handleOrganizationFilterChange(org.name)}
+                              className="rounded border-gray-300 focus:ring-blue-500"
+                            />
+                            <span className="text-sm truncate" title={org.name}>
+                              {org.name} ({count})
+                            </span>
+                          </label>
+                        );
+                      })
+                    ) : (
+                      <div className="text-sm text-gray-500 p-2 text-center">
+                        {orgSearchTerm ? 'No organizations match your search' : 'No organizations available'}
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Show count of filtered orgs */}
+                  {orgSearchTerm && (
+                    <div className="mt-2 text-xs text-gray-500">
+                      Showing {filteredOrganizations.length} of {organizations.length} organizations
+                    </div>
+                  )}
+                </div>
+
+                {/* Sticker Status Filters */}
+                <div>
+                  <h3 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
+                    <span className="text-lg">🏷️</span>
+                    STICKER STATUS
+                  </h3>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={stickerStatusFilters.pending}
+                        onChange={() => handleStickerStatusFilterChange('pending')}
+                        className="rounded border-gray-300 focus:ring-blue-500"
+                      />
+                      <span className="text-sm">Pending ({devices.filter(d => d.stickerStatus === 'Pending').length})</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={stickerStatusFilters.applied}
+                        onChange={() => handleStickerStatusFilterChange('applied')}
+                        className="rounded border-gray-300 focus:ring-blue-500"
+                      />
+                      <span className="text-sm">Applied ({devices.filter(d => d.stickerStatus === 'Applied').length})</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={stickerStatusFilters.notApplied}
+                        onChange={() => handleStickerStatusFilterChange('notApplied')}
+                        className="rounded border-gray-300 focus:ring-blue-500"
+                      />
+                      <span className="text-sm">Not Applied ({devices.filter(d => d.stickerStatus === 'Not Applied').length})</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Testing Status Filters */}
+                <div>
+                  <h3 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
+                    <span className="text-lg">🧪</span>
+                    TESTING STATUS
+                  </h3>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={testingStatusFilters.notTested}
+                        onChange={() => handleTestingStatusFilterChange('notTested')}
+                        className="rounded border-gray-300 focus:ring-blue-500"
+                      />
+                      <span className="text-sm">Not Tested ({devices.filter(d => d.testing === 'not tested yet').length})</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={testingStatusFilters.passed}
+                        onChange={() => handleTestingStatusFilterChange('passed')}
+                        className="rounded border-gray-300 focus:ring-blue-500"
+                      />
+                      <span className="text-sm">Passed ({devices.filter(d => d.testing === 'passed').length})</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={testingStatusFilters.failed}
+                        onChange={() => handleTestingStatusFilterChange('failed')}
+                        className="rounded border-gray-300 focus:ring-blue-500"
+                      />
+                      <span className="text-sm">Failed ({devices.filter(d => d.testing === 'failed').length})</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Device Table */}
         <div className="overflow-x-auto">
@@ -533,7 +815,7 @@ const Hardware = ({
                     </div>
                     <div className="text-lg mb-1">No {activeHardwareTab.toLowerCase()}s found</div>
                     <div className="text-sm">
-                      {searchTerm || statusFilter !== 'All' || organizationFilter !== 'All'
+                      {searchTerm || getActiveFilterCount() > 0
                         ? 'Try adjusting your search or filters'
                         : `Add your first ${activeHardwareTab.toLowerCase()} to the inventory`
                       }

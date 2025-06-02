@@ -1,10 +1,10 @@
 "use client"
 import React, { useState, useEffect } from 'react';
-import Sidebar from './Sidebar';
+import Sidebar from './SideBar';
 import Header from './Header';
 import MainTable from './MainTable';
 import OrganizationModal from './OrganizationModel';
-import Hardware from './Hardware';
+import Hardware from './HardWare';
 
 // Firestore imports
 import { db } from '../api/firebase';
