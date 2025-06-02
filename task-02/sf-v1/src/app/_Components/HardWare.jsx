@@ -1,4 +1,4 @@
-// components/Hardware.jsx
+// components/Hardware.jsx - Complete Version with Firestore Integration
 import React, { useState } from 'react';
 
 const Hardware = ({ 
@@ -6,7 +6,8 @@ const Hardware = ({
   devices = [], 
   onCreateDevice, 
   onUpdateDevice, 
-  onDeleteDevice 
+  onDeleteDevice,
+  isLoading = false
 }) => {
   // Hardware tab state (Camera or Sensor)
   const [activeHardwareTab, setActiveHardwareTab] = useState('Camera');
@@ -16,15 +17,16 @@ const Hardware = ({
   const [statusFilter, setStatusFilter] = useState('All');
   const [organizationFilter, setOrganizationFilter] = useState('All');
 
-  // Modal state
+  // Modal and form states
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDevice, setEditingDevice] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   // Form state
   const [formData, setFormData] = useState({
     deviceId: '',
     deviceType: activeHardwareTab.toLowerCase(),
-    organization: '',
+    organization: 'Unassigned',
     organizationId: null,
     ipAddress: '',
     modelNo: '',
@@ -45,10 +47,11 @@ const Hardware = ({
     // Apply search filter
     if (searchTerm) {
       filteredDevices = filteredDevices.filter(device =>
-        device.deviceName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        device.serial.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        device.organization.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        device.ipAddress.toLowerCase().includes(searchTerm.toLowerCase())
+        device.deviceName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        device.serial?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        device.organization?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        device.ipAddress?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        device.modelNo?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
@@ -61,9 +64,15 @@ const Hardware = ({
 
     // Apply organization filter
     if (organizationFilter !== 'All') {
-      filteredDevices = filteredDevices.filter(device => 
-        device.organization === organizationFilter
-      );
+      if (organizationFilter === 'Unassigned') {
+        filteredDevices = filteredDevices.filter(device => 
+          device.organization === 'Unassigned' || !device.organization
+        );
+      } else {
+        filteredDevices = filteredDevices.filter(device => 
+          device.organization === organizationFilter
+        );
+      }
     }
 
     return filteredDevices;
@@ -75,45 +84,62 @@ const Hardware = ({
     
     // If organization is selected, also set organizationId
     if (name === 'organization') {
-      const selectedOrg = organizations.find(org => org.name === value);
-      setFormData(prev => ({ 
-        ...prev, 
-        [name]: value,
-        organizationId: selectedOrg ? selectedOrg.id : null
-      }));
+      if (value === 'Unassigned') {
+        setFormData(prev => ({ 
+          ...prev, 
+          [name]: value,
+          organizationId: null
+        }));
+      } else {
+        const selectedOrg = organizations.find(org => org.name === value);
+        setFormData(prev => ({ 
+          ...prev, 
+          [name]: value,
+          organizationId: selectedOrg ? selectedOrg.id : null
+        }));
+      }
     } else {
       setFormData(prev => ({ ...prev, [name]: value }));
     }
   };
 
   // Handle adding new device
-  const handleAddDevice = (e) => {
+  const handleAddDevice = async (e) => {
     e.preventDefault();
     
-    // Find the selected organization
-    const selectedOrg = organizations.find(org => org.name === formData.organization);
+    setIsSubmitting(true);
     
-    const newDevice = {
-      deviceName: formData.deviceId,
-      serial: Math.random().toString().substring(2, 12),
-      deviceType: activeHardwareTab.toLowerCase(),
-      stickerStatus: formData.stickerStatus,
-      ipAddress: formData.ipAddress,
-      testing: formData.testingStatus,
-      organization: formData.organization,
-      organizationId: selectedOrg ? selectedOrg.id : null,
-      status: 'Pending',
-      modelNo: formData.modelNo,
-      lens: formData.lens || 'N/A',
-      avatar: activeHardwareTab === 'Camera' ? '📷' : '📊'
-    };
-    
-    // Call the parent's create function
-    onCreateDevice(newDevice);
-    setIsModalOpen(false);
-    
-    // Reset form
-    resetForm();
+    try {
+      // Find the selected organization
+      const selectedOrg = formData.organization !== 'Unassigned' 
+        ? organizations.find(org => org.name === formData.organization)
+        : null;
+      
+      const newDevice = {
+        deviceName: formData.deviceId,
+        serial: Math.random().toString().substring(2, 12),
+        deviceType: activeHardwareTab.toLowerCase(),
+        stickerStatus: formData.stickerStatus,
+        ipAddress: formData.ipAddress,
+        testing: formData.testingStatus,
+        organization: formData.organization,
+        organizationId: selectedOrg ? selectedOrg.id : null,
+        status: 'Inventory', // Default status for new devices
+        modelNo: formData.modelNo,
+        lens: formData.lens || 'N/A',
+        avatar: activeHardwareTab === 'Camera' ? '📷' : '📊'
+      };
+      
+      // Call the parent's create function (this will handle Firestore)
+      await onCreateDevice(newDevice);
+      
+      setIsModalOpen(false);
+      resetForm();
+    } catch (error) {
+      console.error('Error adding device:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Handle editing device
@@ -122,7 +148,7 @@ const Hardware = ({
     setFormData({
       deviceId: device.deviceName,
       deviceType: device.deviceType,
-      organization: device.organization,
+      organization: device.organization || 'Unassigned',
       organizationId: device.organizationId,
       ipAddress: device.ipAddress,
       modelNo: device.modelNo,
@@ -137,36 +163,50 @@ const Hardware = ({
   };
 
   // Handle updating device
-  const handleUpdateDevice = (e) => {
+  const handleUpdateDevice = async (e) => {
     e.preventDefault();
     
-    // Find the selected organization
-    const selectedOrg = organizations.find(org => org.name === formData.organization);
+    setIsSubmitting(true);
     
-    const updatedDevice = {
-      ...editingDevice,
-      deviceName: formData.deviceId,
-      organization: formData.organization,
-      organizationId: selectedOrg ? selectedOrg.id : null,
-      ipAddress: formData.ipAddress,
-      modelNo: formData.modelNo,
-      lens: formData.lens,
-      stickerStatus: formData.stickerStatus,
-      testing: formData.testingStatus
-    };
-    
-    // Call the parent's update function
-    onUpdateDevice(updatedDevice);
-    
-    setIsModalOpen(false);
-    setEditingDevice(null);
-    resetForm();
+    try {
+      // Find the selected organization
+      const selectedOrg = formData.organization !== 'Unassigned' 
+        ? organizations.find(org => org.name === formData.organization)
+        : null;
+      
+      const updatedDevice = {
+        ...editingDevice,
+        deviceName: formData.deviceId,
+        organization: formData.organization,
+        organizationId: selectedOrg ? selectedOrg.id : null,
+        ipAddress: formData.ipAddress,
+        modelNo: formData.modelNo,
+        lens: formData.lens,
+        stickerStatus: formData.stickerStatus,
+        testing: formData.testingStatus
+      };
+      
+      // Call the parent's update function (this will handle Firestore)
+      await onUpdateDevice(updatedDevice);
+      
+      setIsModalOpen(false);
+      setEditingDevice(null);
+      resetForm();
+    } catch (error) {
+      console.error('Error updating device:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Handle deleting device
-  const handleDeleteDevice = (deviceId) => {
-    // Call the parent's delete function
-    onDeleteDevice(deviceId);
+  const handleDeleteDevice = async (deviceId) => {
+    try {
+      // Call the parent's delete function (this will handle Firestore)
+      await onDeleteDevice(deviceId);
+    } catch (error) {
+      console.error('Error deleting device:', error);
+    }
   };
 
   // Handle opening modal for new device
@@ -181,7 +221,7 @@ const Hardware = ({
     setFormData({
       deviceId: '', 
       deviceType: activeHardwareTab.toLowerCase(), 
-      organization: '',
+      organization: 'Unassigned',
       organizationId: null,
       ipAddress: '', 
       modelNo: '', 
@@ -200,6 +240,8 @@ const Hardware = ({
       case 'Active': return 'bg-green-100 text-green-800';
       case 'Pending': return 'bg-yellow-100 text-yellow-800';
       case 'Inactive': return 'bg-red-100 text-red-800';
+      case 'Inventory': return 'bg-blue-100 text-blue-800';
+      case 'Assigned': return 'bg-purple-100 text-purple-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
@@ -219,35 +261,62 @@ const Hardware = ({
     sensor: devices.filter(d => d.deviceType === 'sensor').length
   };
 
+  // Get inventory stats
+  const inventoryStats = {
+    total: devices.length,
+    unassigned: devices.filter(d => d.organization === 'Unassigned' || !d.organization).length,
+    assigned: devices.filter(d => d.organization && d.organization !== 'Unassigned').length,
+    inventory: devices.filter(d => d.status === 'Inventory').length
+  };
+
+  // Loading state component
+  const LoadingSpinner = () => (
+    <div className="flex items-center justify-center py-12">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <span className="ml-2 text-gray-600">Loading devices...</span>
+    </div>
+  );
+
   return (
     <div className="p-6">
       
       {/* Hardware Header */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold mb-2">Hardware Management</h1>
+        <h1 className="text-2xl font-bold mb-2">Hardware Inventory</h1>
         <span className="bg-gray-600 text-white px-2 py-1 rounded text-xs">
-          IoT Devices and Equipment
+          Device Inventory Management
         </span>
+        {isLoading && (
+          <div className="mt-2 text-sm text-blue-600">
+            🔄 Syncing with Firestore...
+          </div>
+        )}
       </div>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
         <div className="bg-white p-6 rounded-lg shadow">
           <h3 className="text-sm font-medium text-gray-500 mb-1">Total Devices</h3>
-          <p className="text-2xl font-bold text-blue-600">{devices.length}</p>
+          <p className="text-2xl font-bold text-blue-600">
+            {isLoading ? '...' : inventoryStats.total}
+          </p>
         </div>
         <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-sm font-medium text-gray-500 mb-1">Cameras</h3>
-          <p className="text-2xl font-bold text-green-600">{deviceCounts.camera}</p>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-sm font-medium text-gray-500 mb-1">Sensors</h3>
-          <p className="text-2xl font-bold text-purple-600">{deviceCounts.sensor}</p>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-sm font-medium text-gray-500 mb-1">Active</h3>
+          <h3 className="text-sm font-medium text-gray-500 mb-1">Unassigned</h3>
           <p className="text-2xl font-bold text-orange-600">
-            {devices.filter(d => d.status === 'Active').length}
+            {isLoading ? '...' : inventoryStats.unassigned}
+          </p>
+        </div>
+        <div className="bg-white p-6 rounded-lg shadow">
+          <h3 className="text-sm font-medium text-gray-500 mb-1">Assigned</h3>
+          <p className="text-2xl font-bold text-green-600">
+            {isLoading ? '...' : inventoryStats.assigned}
+          </p>
+        </div>
+        <div className="bg-white p-6 rounded-lg shadow">
+          <h3 className="text-sm font-medium text-gray-500 mb-1">In Inventory</h3>
+          <p className="text-2xl font-bold text-purple-600">
+            {isLoading ? '...' : inventoryStats.inventory}
           </p>
         </div>
       </div>
@@ -277,7 +346,7 @@ const Hardware = ({
                   <span className="text-lg">
                     {tab === 'Camera' ? '📷' : '📊'}
                   </span>
-                  {tab}s ({deviceCounts[tab.toLowerCase()]})
+                  {tab}s ({isLoading ? '...' : deviceCounts[tab.toLowerCase()]})
                 </div>
               </button>
             ))}
@@ -291,10 +360,11 @@ const Hardware = ({
             <div className="flex-1 min-w-80">
               <input
                 type="text"
-                placeholder={`Search ${activeHardwareTab.toLowerCase()}s...`}
+                placeholder={`Search ${activeHardwareTab.toLowerCase()}s by name, serial, IP, model...`}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                disabled={isLoading}
               />
             </div>
 
@@ -303,9 +373,12 @@ const Hardware = ({
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              disabled={isLoading}
             >
               <option value="All">All Status</option>
+              <option value="Inventory">Inventory</option>
               <option value="Active">Active</option>
+              <option value="Assigned">Assigned</option>
               <option value="Pending">Pending</option>
               <option value="Inactive">Inactive</option>
             </select>
@@ -315,8 +388,10 @@ const Hardware = ({
               value={organizationFilter}
               onChange={(e) => setOrganizationFilter(e.target.value)}
               className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              disabled={isLoading}
             >
-              <option value="All">All Organizations</option>
+              <option value="All">All Assignments</option>
+              <option value="Unassigned">Unassigned</option>
               {organizations.map((org) => (
                 <option key={org.id} value={org.name}>
                   {org.name}
@@ -327,7 +402,8 @@ const Hardware = ({
             {/* Add Device Button */}
             <button
               onClick={handleNewDevice}
-              className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+              disabled={isLoading}
+              className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span className="text-lg">+</span>
               Add {activeHardwareTab}
@@ -336,10 +412,16 @@ const Hardware = ({
 
           {/* Filter Results Info */}
           <div className="mt-4 text-sm text-gray-600">
-            Showing {filteredDevices.length} of {devices.filter(d => d.deviceType === activeHardwareTab.toLowerCase()).length} {activeHardwareTab.toLowerCase()}s
-            {searchTerm && ` matching "${searchTerm}"`}
-            {statusFilter !== 'All' && ` with status "${statusFilter}"`}
-            {organizationFilter !== 'All' && ` from "${organizationFilter}"`}
+            {isLoading ? (
+              'Loading device data...'
+            ) : (
+              <>
+                Showing {filteredDevices.length} of {devices.filter(d => d.deviceType === activeHardwareTab.toLowerCase()).length} {activeHardwareTab.toLowerCase()}s
+                {searchTerm && ` matching "${searchTerm}"`}
+                {statusFilter !== 'All' && ` with status "${statusFilter}"`}
+                {organizationFilter !== 'All' && ` ${organizationFilter === 'Unassigned' ? 'unassigned' : `assigned to "${organizationFilter}"`}`}
+              </>
+            )}
           </div>
         </div>
 
@@ -352,7 +434,7 @@ const Hardware = ({
                   Device Info
                 </th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">
-                  Organization
+                  Assignment
                 </th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">
                   Status
@@ -372,7 +454,13 @@ const Hardware = ({
               </tr>
             </thead>
             <tbody>
-              {filteredDevices.length > 0 ? (
+              {isLoading ? (
+                <tr>
+                  <td colSpan="7">
+                    <LoadingSpinner />
+                  </td>
+                </tr>
+              ) : filteredDevices.length > 0 ? (
                 filteredDevices.map((device) => (
                   <tr key={device.id} className="border-b hover:bg-gray-50">
                     <td className="py-4 px-4">
@@ -386,8 +474,14 @@ const Hardware = ({
                         </div>
                       </div>
                     </td>
-                    <td className="py-4 px-4 text-gray-700">
-                      {device.organization}
+                    <td className="py-4 px-4">
+                      <span className={`px-3 py-1 rounded-full text-sm ${
+                        device.organization === 'Unassigned' || !device.organization
+                          ? 'bg-orange-100 text-orange-800'
+                          : 'bg-green-100 text-green-800'
+                      }`}>
+                        {device.organization || 'Unassigned'}
+                      </span>
                     </td>
                     <td className="py-4 px-4">
                       <span className={`px-3 py-1 rounded-full text-sm ${getStatusColor(device.status)}`}>
@@ -395,7 +489,7 @@ const Hardware = ({
                       </span>
                     </td>
                     <td className="py-4 px-4 text-gray-700">
-                      {device.ipAddress}
+                      {device.ipAddress || 'Not set'}
                     </td>
                     <td className="py-4 px-4">
                       <span className={`px-3 py-1 rounded-full text-sm ${getTestingColor(device.testing)}`}>
@@ -403,7 +497,7 @@ const Hardware = ({
                       </span>
                     </td>
                     <td className="py-4 px-4 text-gray-700">
-                      {device.modelNo}
+                      {device.modelNo || 'Not specified'}
                     </td>
                     <td className="py-4 px-4">
                       <div className="flex items-center gap-2">
@@ -441,7 +535,7 @@ const Hardware = ({
                     <div className="text-sm">
                       {searchTerm || statusFilter !== 'All' || organizationFilter !== 'All'
                         ? 'Try adjusting your search or filters'
-                        : `Add your first ${activeHardwareTab.toLowerCase()} to get started`
+                        : `Add your first ${activeHardwareTab.toLowerCase()} to the inventory`
                       }
                     </div>
                   </td>
@@ -460,7 +554,7 @@ const Hardware = ({
             {/* Modal Header */}
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-semibold">
-                {editingDevice ? 'Edit' : 'Add'} {activeHardwareTab}
+                {editingDevice ? 'Edit' : 'Add'} {activeHardwareTab} to Inventory
               </h2>
               <button 
                 onClick={() => {
@@ -468,6 +562,7 @@ const Hardware = ({
                   setEditingDevice(null);
                 }}
                 className="text-gray-400 hover:text-white text-2xl transition-colors"
+                disabled={isSubmitting}
               >
                 ×
               </button>
@@ -476,7 +571,7 @@ const Hardware = ({
             {/* Device Form */}
             <form onSubmit={editingDevice ? handleUpdateDevice : handleAddDevice} className="space-y-4">
               
-              {/* Device ID and Organization */}
+              {/* Device ID and Assignment */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm mb-1 text-blue-400">Device ID *</label>
@@ -488,18 +583,19 @@ const Hardware = ({
                     placeholder={`${activeHardwareTab.substring(0,3).toUpperCase()}-01`}
                     className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white focus:ring-2 focus:ring-blue-500"
                     required
+                    disabled={isSubmitting}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm mb-1 text-blue-400">Organization *</label>
+                  <label className="block text-sm mb-1 text-blue-400">Assignment</label>
                   <select
                     name="organization"
                     value={formData.organization}
                     onChange={handleInputChange}
                     className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white focus:ring-2 focus:ring-blue-500"
-                    required
+                    disabled={isSubmitting}
                   >
-                    <option value="">Select Organization</option>
+                    <option value="Unassigned">Unassigned (Inventory)</option>
                     {organizations.map((org) => (
                       <option key={org.id} value={org.name}>
                         {org.name}
@@ -520,6 +616,7 @@ const Hardware = ({
                     onChange={handleInputChange}
                     placeholder="192.168.1.100"
                     className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white focus:ring-2 focus:ring-blue-500"
+                    disabled={isSubmitting}
                   />
                 </div>
                 <div>
@@ -531,6 +628,7 @@ const Hardware = ({
                     onChange={handleInputChange}
                     placeholder="Model number"
                     className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white focus:ring-2 focus:ring-blue-500"
+                    disabled={isSubmitting}
                   />
                 </div>
               </div>
@@ -546,6 +644,7 @@ const Hardware = ({
                     onChange={handleInputChange}
                     placeholder="in mm"
                     className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white focus:ring-2 focus:ring-blue-500"
+                    disabled={isSubmitting}
                   />
                 </div>
               )}
@@ -559,6 +658,7 @@ const Hardware = ({
                     value={formData.stickerStatus}
                     onChange={handleInputChange}
                     className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white focus:ring-2 focus:ring-blue-500"
+                    disabled={isSubmitting}
                   >
                     <option value="Pending">Pending</option>
                     <option value="Applied">Applied</option>
@@ -572,6 +672,7 @@ const Hardware = ({
                     value={formData.testingStatus}
                     onChange={handleInputChange}
                     className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white focus:ring-2 focus:ring-blue-500"
+                    disabled={isSubmitting}
                   >
                     <option value="not tested yet">Not tested yet</option>
                     <option value="passed">Passed</option>
@@ -583,9 +684,17 @@ const Hardware = ({
               {/* Submit Button */}
               <button
                 type="submit"
-                className="w-full bg-blue-600 text-white py-3 rounded hover:bg-blue-700 font-medium mt-6 transition-colors"
+                disabled={isSubmitting}
+                className="w-full bg-blue-600 text-white py-3 rounded hover:bg-blue-700 font-medium mt-6 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {editingDevice ? 'Update' : 'Add'} {activeHardwareTab}
+                {isSubmitting ? (
+                  <div className="flex items-center justify-center gap-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    {editingDevice ? 'Updating...' : 'Adding...'}
+                  </div>
+                ) : (
+                  `${editingDevice ? 'Update' : 'Add'} ${activeHardwareTab}`
+                )}
               </button>
             </form>
           </div>
