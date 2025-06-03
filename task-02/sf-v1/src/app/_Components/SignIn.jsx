@@ -20,7 +20,6 @@ function SignInForm() {
   useEffect((
    onAuthStateChanged(auth, (user) =>{
     if(user){
-      console.log("User log",user.email);
       router.push('dashboard');
     }
     else{
@@ -35,7 +34,6 @@ function SignInForm() {
       const userCredential =  await signInWithEmailAndPassword(auth, email, password);
       
        const idToken = await userCredential.user.getIdToken();
-      console.log(idToken);
     // Send ID token to server
     await fetch('http://localhost:5000/sessionLogin', {
       method: 'POST',

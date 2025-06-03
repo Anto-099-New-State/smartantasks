@@ -5,6 +5,7 @@ import Header from './Header';
 import MainTable from './MainTable';
 import OrganizationModal from './OrganizationModel';
 import Hardware from './HardWare';
+import Layouts from './Layouts'
 
 // Firestore imports
 import { db } from '../api/firebase';
@@ -17,7 +18,9 @@ import {
   getDocs, 
   onSnapshot,
   query,
-  orderBy 
+  orderBy,
+  addDoc,
+  serverTimestamp
 } from "firebase/firestore";
 
 const Dashboard = () => {
@@ -31,94 +34,75 @@ const Dashboard = () => {
   const [isLoadingDevices, setIsLoadingDevices] = useState(true);
   const [isLoadingOrgs, setIsLoadingOrgs] = useState(true);
   
-  // Organization data (your existing users data)
-  const [users, setUsers] = useState([
-    {
-      id: 1,
-      name: 'Mayoraiven',
-      email: 'info@mayoraiven.com',
-      role: 'Administrator',
-      status: 'Active',
-      tags: ['Marketing'],
-      avatar: 'M',
-      firstName: 'Mayor',
-      lastName: 'Aiven',
-      address1: '123 Main St',
-      address2: 'Suite 100',
-      city: 'San Francisco',
-      state: 'California',
-      zip: '94102'
-    },
-    {
-      id: 2,
-      name: 'Lionesse Yami',
-      email: 'l.yami@emviul.com',
-      role: 'Human resources',
-      status: 'Active',
-      tags: ['Marketing'],
-      avatar: 'L',
-      firstName: 'Lionesse',
-      lastName: 'Yami',
-      address1: '456 Oak Ave',
-      address2: '',
-      city: 'Los Angeles',
-      state: 'California',
-      zip: '90210'
-    },
-    {
-      id: 3,
-      name: 'Christian Chang',
-      email: 'c.chang@emviul.com',
-      role: 'Product Designer',
-      status: 'Onboarding',
-      tags: ['Marketing'],
-      avatar: 'C',
-      firstName: 'Christian',
-      lastName: 'Chang',
-      address1: '789 Pine St',
-      address2: 'Apt 5B',
-      city: 'Seattle',
-      state: 'Washington',
-      zip: '98101'
-    },
-    {
-      id: 4,
-      name: 'Jade Solis',
-      email: 'j.solis@emviul.com',
-      role: 'UI Designer',
-      status: 'Active',
-      tags: ['Marketing'],
-      avatar: 'J',
-      firstName: 'Jade',
-      lastName: 'Solis',
-      address1: '321 Elm St',
-      address2: '',
-      city: 'Austin',
-      state: 'Texas',
-      zip: '78701'
-    },
-    {
-      id: 5,
-      name: 'Claude Bowman',
-      email: 'c.bowman@emviul.com',
-      role: 'UX Designer',
-      status: 'Onboarding',
-      tags: ['Marketing'],
-      avatar: 'C',
-      firstName: 'Claude',
-      lastName: 'Bowman',
-      address1: '654 Maple Ave',
-      address2: 'Floor 3',
-      city: 'Denver',
-      state: 'Colorado',
-      zip: '80202'
-    }
-  ]);
+  // Organization data - now loaded from Firestore
+  const [users, setUsers] = useState([]);
 
-  // Hardware devices state - now managed with Firestore
+  // Hardware devices state - managed with Firestore
   const [devices, setDevices] = useState([]);
 
-  // Load devices from Firestore on component mount
+  // Load organizations from Firestore
+  useEffect(() => {
+    const loadOrganizations = async () => {
+      try {
+        setIsLoadingOrgs(true);
+        
+        // Create query to get organizations ordered by creation date
+        const orgsQuery = query(
+          collection(db, "organizations"), 
+          orderBy("createdAt", "desc")
+        );
+        
+        // Set up real-time listener for organizations
+        const unsubscribe = onSnapshot(orgsQuery, (querySnapshot) => {
+          const orgsData = [];
+          querySnapshot.forEach((doc) => {
+            const data = doc.data();
+            orgsData.push({
+              id: doc.id,
+              ...data,
+              name: data.name,
+              email: data.email,
+              role: data.role,
+              status: data.status,
+              tags: data.tags || ['Marketing'],
+              avatar: data.avatar,
+              firstName: data.firstName,
+              lastName: data.lastName,
+              address1: data.address1,
+              address2: data.address2,
+              city: data.city,
+              state: data.state,
+              zip: data.zip
+            });
+          });
+          
+          setUsers(orgsData);
+          setIsLoadingOrgs(false);
+          console.log('Organizations loaded from Firestore:', orgsData);
+        }, (error) => {
+          console.error("Error loading organizations:", error);
+          setIsLoadingOrgs(false);
+        });
+
+        // Return cleanup function
+        return unsubscribe;
+      } catch (error) {
+        console.error("Error setting up organizations listener:", error);
+        setIsLoadingOrgs(false);
+      }
+    };
+
+    const unsubscribe = loadOrganizations();
+    
+    // Cleanup on unmount
+    return () => {
+      if (unsubscribe && typeof unsubscribe === 'function') {
+        unsubscribe();
+      }
+    };
+  }, []);
+
+  // Load devices from Firestore
   useEffect(() => {
     const loadDevices = async () => {
       try {
@@ -142,6 +126,7 @@ const Dashboard = () => {
           
           setDevices(devicesData);
           setIsLoadingDevices(false);
+          console.log('Devices loaded from Firestore:', devicesData);
         }, (error) => {
           console.error("Error loading devices:", error);
           setIsLoadingDevices(false);
@@ -165,36 +150,64 @@ const Dashboard = () => {
     };
   }, []);
 
-  // CRUD Operations for Organizations (keeping existing logic)
+  // CRUD Operations for Organizations (Firestore integration)
   const handleCreateUser = async (userData) => {
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    const newUser = {
-      ...userData,
-      id: Math.max(...users.map(u => u.id)) + 1
-    };
-    
-    setUsers(prevUsers => [...prevUsers, newUser]);
-    console.log('User created:', newUser);
+    try {
+      // Prepare organization data for Firestore
+      const firestoreOrgData = {
+        name: userData.name,
+        email: userData.email,
+        role: userData.role,
+        status: userData.status || 'Active',
+        tags: userData.tags || ['Marketing'],
+        avatar: userData.avatar || userData.name.charAt(0).toUpperCase(),
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        address1: userData.address1,
+        address2: userData.address2 || '',
+        city: userData.city,
+        state: userData.state,
+        zip: userData.zip,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
+      
+      // Save to Firestore (let Firestore generate the ID)
+      const docRef = await addDoc(collection(db, "organizations"), firestoreOrgData);
+      
+      console.log('Organization created in Firestore with ID:', docRef.id);
+    } catch (error) {
+      console.error("Error creating organization:", error);
+      alert("Failed to create organization. Please try again.");
+    }
   };
 
   const handleUpdateUser = async (userData) => {
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    setUsers(prevUsers => 
-      prevUsers.map(user => 
-        user.id === userData.id ? userData : user
-      )
-    );
-    console.log('User updated:', userData);
+    try {
+      // Prepare updated data
+      const updatedData = {
+        ...userData,
+        updatedAt: serverTimestamp()
+      };
+      
+      // Remove the id field from the update data
+      const { id, ...dataToUpdate } = updatedData;
+      
+      // Update in Firestore
+      const orgRef = doc(db, "organizations", userData.id);
+      await updateDoc(orgRef, dataToUpdate);
+      
+      console.log('Organization updated in Firestore:', userData.id);
+    } catch (error) {
+      console.error("Error updating organization:", error);
+      alert("Failed to update organization. Please try again.");
+    }
   };
 
   const handleDeleteUser = async (userId) => {
-    if (window.confirm('Are you sure you want to delete this user?')) {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Also update devices that belong to this organization in Firestore
+    if (window.confirm('Are you sure you want to delete this organization? This will also unassign all devices.')) {
       try {
+        // First, update devices that belong to this organization
         const devicesToUpdate = devices.filter(device => device.organizationId === userId);
         
         for (const device of devicesToUpdate) {
@@ -202,37 +215,37 @@ const Dashboard = () => {
           await updateDoc(deviceRef, {
             organization: 'Unassigned',
             organizationId: null,
-            updatedAt: new Date().toISOString()
+            gym: null,
+            gymId: null,
+            updatedAt: serverTimestamp()
           });
         }
+        
+        // Then delete the organization from Firestore
+        await deleteDoc(doc(db, "organizations", userId));
+        
+        console.log('Organization deleted from Firestore:', userId);
       } catch (error) {
-        console.error("Error updating devices after organization deletion:", error);
+        console.error("Error deleting organization:", error);
+        alert("Failed to delete organization. Please try again.");
       }
-      
-      setUsers(prevUsers => prevUsers.filter(user => user.id !== userId));
-      console.log('User deleted:', userId);
     }
   };
 
   // CRUD Operations for Devices (Firestore integration)
   const handleCreateDevice = async (deviceData) => {
     try {
-      // Generate unique ID
-      const deviceId = `device_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      
       // Prepare device data for Firestore
       const firestoreDeviceData = {
         ...deviceData,
-        id: deviceId,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
       };
       
-      // Save to Firestore
-      const deviceRef = doc(db, "devices", deviceId);
-      await setDoc(deviceRef, firestoreDeviceData);
+      // Save to Firestore (let Firestore generate the ID)
+      const docRef = await addDoc(collection(db, "devices"), firestoreDeviceData);
       
-      console.log('Device created in Firestore:', firestoreDeviceData);
+      console.log('Device created in Firestore with ID:', docRef.id);
     } catch (error) {
       console.error("Error creating device:", error);
       alert("Failed to create device. Please try again.");
@@ -244,14 +257,17 @@ const Dashboard = () => {
       // Prepare updated data
       const updatedData = {
         ...deviceData,
-        updatedAt: new Date().toISOString()
+        updatedAt: serverTimestamp()
       };
+      
+      // Remove the id field from the update data
+      const { id, ...dataToUpdate } = updatedData;
       
       // Update in Firestore
       const deviceRef = doc(db, "devices", deviceData.id);
-      await updateDoc(deviceRef, updatedData);
+      await updateDoc(deviceRef, dataToUpdate);
       
-      console.log('Device updated in Firestore:', updatedData);
+      console.log('Device updated in Firestore:', deviceData.id);
     } catch (error) {
       console.error("Error updating device:", error);
       alert("Failed to update device. Please try again.");
@@ -272,7 +288,7 @@ const Dashboard = () => {
     }
   };
 
-  // Modal handlers (keeping existing logic)
+  // Modal handlers
   const handleNewOrganization = () => {
     setEditingUser(null);
     setIsModalOpen(true);
@@ -332,29 +348,40 @@ const Dashboard = () => {
               <span className="bg-gray-600 text-white px-2 py-1 rounded text-xs">
                 Overview and Analytics
               </span>
+              {(isLoadingOrgs || isLoadingDevices) && (
+                <div className="mt-2 text-sm text-blue-600">
+                  🔄 Loading data from Firestore...
+                </div>
+              )}
             </div>
             
             {/* Enhanced Dashboard Stats */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
               <div className="bg-white p-6 rounded-lg shadow">
                 <h3 className="text-sm font-medium text-gray-500 mb-1">Total Organizations</h3>
-                <p className="text-2xl font-bold text-blue-600">{stats.organizations}</p>
+                <p className="text-2xl font-bold text-blue-600">
+                  {isLoadingOrgs ? '...' : stats.organizations}
+                </p>
                 <p className="text-xs text-gray-400">{stats.activeUsers} active</p>
               </div>
               <div className="bg-white p-6 rounded-lg shadow">
                 <h3 className="text-sm font-medium text-gray-500 mb-1">Total Devices</h3>
-                <p className="text-2xl font-bold text-green-600">{stats.totalDevices}</p>
+                <p className="text-2xl font-bold text-green-600">
+                  {isLoadingDevices ? '...' : stats.totalDevices}
+                </p>
                 <p className="text-xs text-gray-400">{stats.activeDevices} active</p>
               </div>
               <div className="bg-white p-6 rounded-lg shadow">
                 <h3 className="text-sm font-medium text-gray-500 mb-1">Unassigned Devices</h3>
-                <p className="text-2xl font-bold text-orange-600">{stats.unassignedDevices}</p>
+                <p className="text-2xl font-bold text-orange-600">
+                  {isLoadingDevices ? '...' : stats.unassignedDevices}
+                </p>
               </div>
               <div className="bg-white p-6 rounded-lg shadow">
                 <h3 className="text-sm font-medium text-gray-500 mb-1">Device Types</h3>
                 <div className="text-sm text-gray-600">
-                  <div>📷 Cameras: {stats.cameras}</div>
-                  <div>📊 Sensors: {stats.sensors}</div>
+                  <div>📷 Cameras: {isLoadingDevices ? '...' : stats.cameras}</div>
+                  <div>📊 Sensors: {isLoadingDevices ? '...' : stats.sensors}</div>
                 </div>
               </div>
             </div>
@@ -363,37 +390,49 @@ const Dashboard = () => {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
               <div className="bg-white p-6 rounded-lg shadow">
                 <h3 className="text-lg font-semibold mb-4">Devices by Assignment</h3>
-                <div className="space-y-3">
-                  {Object.entries(stats.devicesByOrg).map(([org, count]) => (
-                    <div key={org} className="flex items-center justify-between">
-                      <span className={`text-gray-700 ${org === 'Unassigned' ? 'text-orange-600 font-medium' : ''}`}>
-                        {org}
-                      </span>
-                      <span className="font-medium">{count} devices</span>
-                    </div>
-                  ))}
-                </div>
+                {isLoadingDevices ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                    <span className="ml-2 text-sm text-gray-600">Loading device distribution...</span>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {Object.entries(stats.devicesByOrg).map(([org, count]) => (
+                      <div key={org} className="flex items-center justify-between">
+                        <span className={`text-gray-700 ${org === 'Unassigned' ? 'text-orange-600 font-medium' : ''}`}>
+                          {org}
+                        </span>
+                        <span className="font-medium">{count} devices</span>
+                      </div>
+                    ))}
+                    {Object.keys(stats.devicesByOrg).length === 0 && (
+                      <div className="text-gray-500 text-center py-4">
+                        No devices found
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="bg-white p-6 rounded-lg shadow">
                 <h3 className="text-lg font-semibold mb-4">System Status</h3>
                 <div className="space-y-3">
                   <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                    <div className={`w-2 h-2 rounded-full ${isLoadingOrgs ? 'bg-yellow-500' : 'bg-green-500'}`}></div>
+                    <span className="text-sm text-gray-600">
+                      {isLoadingOrgs ? 'Loading organizations...' : 'Organizations loaded successfully'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className={`w-2 h-2 rounded-full ${isLoadingDevices ? 'bg-yellow-500' : 'bg-green-500'}`}></div>
                     <span className="text-sm text-gray-600">
                       {isLoadingDevices ? 'Loading devices...' : 'Devices loaded successfully'}
                     </span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                    <span className="text-sm text-gray-600">
-                      Real-time updates enabled
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3">
                     <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
                     <span className="text-sm text-gray-600">
-                      Firestore integration active
+                      Firestore real-time sync active
                     </span>
                   </div>
                 </div>
@@ -441,15 +480,23 @@ const Dashboard = () => {
               title="Organizations" 
               count={users.length} 
               onNewClick={handleNewOrganization}
+              isLoading={isLoadingOrgs}
             />
             
-            <MainTable 
-              data={users}
-              searchTerm={searchTerm}
-              setSearchTerm={setSearchTerm}
-              onEdit={handleEditUser}
-              onDelete={handleDeleteUser}
-            />
+            {isLoadingOrgs ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <span className="ml-2 text-gray-600">Loading organizations from Firestore...</span>
+              </div>
+            ) : (
+              <MainTable 
+                data={users}
+                searchTerm={searchTerm}
+                setSearchTerm={setSearchTerm}
+                onEdit={handleEditUser}
+                onDelete={handleDeleteUser}
+              />
+            )}
 
             <OrganizationModal
               isOpen={isModalOpen}
@@ -470,6 +517,11 @@ const Dashboard = () => {
             onDeleteDevice={handleDeleteDevice}
             isLoading={isLoadingDevices}
           />
+        );
+
+      case 'Layouts':
+        return (
+          <Layouts />
         );
 
       default:

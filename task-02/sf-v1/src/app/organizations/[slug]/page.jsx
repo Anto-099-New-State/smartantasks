@@ -53,6 +53,7 @@ const GymManagementDashboard = () => {
     phone: '',
     email: '',
     capacity: '',
+    organizationId: '',
     manager: '',
     status: 'ACTIVE',
     openingTime: '',
@@ -151,6 +152,7 @@ const GymManagementDashboard = () => {
         members: 0,
         monthlyRevenue: 0,
         createdBy: user.uid,
+        organizationId: id,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });

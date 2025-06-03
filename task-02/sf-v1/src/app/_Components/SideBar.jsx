@@ -5,6 +5,7 @@ import {
   Users, 
   HardDrive,
   Menu,
+  Layout,
   LogOut,
   ArrowLeftCircleIcon
 } from 'lucide-react';
@@ -16,6 +17,7 @@ const Sidebar = ({ activeTab, setActiveTab }) => {
     { id: 'Dashboard', label: 'Dashboard', icon: Home },
     { id: 'Organization', label: 'Organization', icon: Users },
     { id: 'Hardware', label: 'Hardware', icon: HardDrive }
+    ,{ id: 'Layouts', label: 'Layout', icon:  Layout}
   ];
 
   return (
