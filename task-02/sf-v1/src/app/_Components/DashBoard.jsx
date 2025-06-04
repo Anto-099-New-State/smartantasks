@@ -46,33 +46,18 @@ const Dashboard = () => {
       try {
         setIsLoadingOrgs(true);
         
-        // Create query to get organizations ordered by creation date
-        const orgsQuery = query(
-          collection(db, "organizations"), 
-          orderBy("createdAt", "desc")
-        );
+        // Simple query without orderBy to avoid index issues
+        const orgsCollection = collection(db, "organizations");
         
         // Set up real-time listener for organizations
-        const unsubscribe = onSnapshot(orgsQuery, (querySnapshot) => {
+        const unsubscribe = onSnapshot(orgsCollection, (querySnapshot) => {
           const orgsData = [];
           querySnapshot.forEach((doc) => {
             const data = doc.data();
+            console.log('Organization document:', doc.id, data); // Debug log
             orgsData.push({
               id: doc.id,
-              ...data,
-              name: data.name,
-              email: data.email,
-              role: data.role,
-              status: data.status,
-              tags: data.tags || ['Marketing'],
-              avatar: data.avatar,
-              firstName: data.firstName,
-              lastName: data.lastName,
-              address1: data.address1,
-              address2: data.address2,
-              city: data.city,
-              state: data.state,
-              zip: data.zip
+              ...data
             });
           });
           
@@ -81,13 +66,40 @@ const Dashboard = () => {
           console.log('Organizations loaded from Firestore:', orgsData);
         }, (error) => {
           console.error("Error loading organizations:", error);
-          setIsLoadingOrgs(false);
+          // Try a simple getDocs as fallback
+          loadOrganizationsFallback();
         });
 
         // Return cleanup function
         return unsubscribe;
       } catch (error) {
         console.error("Error setting up organizations listener:", error);
+        // Try a simple getDocs as fallback
+        loadOrganizationsFallback();
+      }
+    };
+
+    // Fallback method using getDocs
+    const loadOrganizationsFallback = async () => {
+      try {
+        console.log('Trying fallback method for organizations...');
+        const querySnapshot = await getDocs(collection(db, "organizations"));
+        const orgsData = [];
+        
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          console.log('Fallback - Organization document:', doc.id, data);
+          orgsData.push({
+            id: doc.id,
+            ...data
+          });
+        });
+        
+        setUsers(orgsData);
+        setIsLoadingOrgs(false);
+        console.log('Organizations loaded via fallback:', orgsData);
+      } catch (error) {
+        console.error("Fallback method also failed:", error);
         setIsLoadingOrgs(false);
       }
     };
@@ -150,88 +162,6 @@ const Dashboard = () => {
     };
   }, []);
 
-  // CRUD Operations for Organizations (Firestore integration)
-  const handleCreateUser = async (userData) => {
-    try {
-      // Prepare organization data for Firestore
-      const firestoreOrgData = {
-        name: userData.name,
-        email: userData.email,
-        role: userData.role,
-        status: userData.status || 'Active',
-        tags: userData.tags || ['Marketing'],
-        avatar: userData.avatar || userData.name.charAt(0).toUpperCase(),
-        firstName: userData.firstName,
-        lastName: userData.lastName,
-        address1: userData.address1,
-        address2: userData.address2 || '',
-        city: userData.city,
-        state: userData.state,
-        zip: userData.zip,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      };
-      
-      // Save to Firestore (let Firestore generate the ID)
-      const docRef = await addDoc(collection(db, "organizations"), firestoreOrgData);
-      
-      console.log('Organization created in Firestore with ID:', docRef.id);
-    } catch (error) {
-      console.error("Error creating organization:", error);
-      alert("Failed to create organization. Please try again.");
-    }
-  };
-
-  const handleUpdateUser = async (userData) => {
-    try {
-      // Prepare updated data
-      const updatedData = {
-        ...userData,
-        updatedAt: serverTimestamp()
-      };
-      
-      // Remove the id field from the update data
-      const { id, ...dataToUpdate } = updatedData;
-      
-      // Update in Firestore
-      const orgRef = doc(db, "organizations", userData.id);
-      await updateDoc(orgRef, dataToUpdate);
-      
-      console.log('Organization updated in Firestore:', userData.id);
-    } catch (error) {
-      console.error("Error updating organization:", error);
-      alert("Failed to update organization. Please try again.");
-    }
-  };
-
-  const handleDeleteUser = async (userId) => {
-    if (window.confirm('Are you sure you want to delete this organization? This will also unassign all devices.')) {
-      try {
-        // First, update devices that belong to this organization
-        const devicesToUpdate = devices.filter(device => device.organizationId === userId);
-        
-        for (const device of devicesToUpdate) {
-          const deviceRef = doc(db, "devices", device.id);
-          await updateDoc(deviceRef, {
-            organization: 'Unassigned',
-            organizationId: null,
-            gym: null,
-            gymId: null,
-            updatedAt: serverTimestamp()
-          });
-        }
-        
-        // Then delete the organization from Firestore
-        await deleteDoc(doc(db, "organizations", userId));
-        
-        console.log('Organization deleted from Firestore:', userId);
-      } catch (error) {
-        console.error("Error deleting organization:", error);
-        alert("Failed to delete organization. Please try again.");
-      }
-    }
-  };
-
   // CRUD Operations for Devices (Firestore integration)
   const handleCreateDevice = async (deviceData) => {
     try {
@@ -288,28 +218,10 @@ const Dashboard = () => {
     }
   };
 
-  // Modal handlers
-  const handleNewOrganization = () => {
-    setEditingUser(null);
-    setIsModalOpen(true);
-  };
-
-  const handleEditUser = (user) => {
-    setEditingUser(user);
-    setIsModalOpen(true);
-  };
-
+  // Modal handlers (removed organization CRUD)
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setEditingUser(null);
-  };
-
-  const handleSubmitModal = async (userData) => {
-    if (editingUser) {
-      await handleUpdateUser(userData);
-    } else {
-      await handleCreateUser(userData);
-    }
   };
 
   // Get statistics for dashboard
@@ -479,7 +391,6 @@ const Dashboard = () => {
             <Header 
               title="Organizations" 
               count={users.length} 
-              onNewClick={handleNewOrganization}
               isLoading={isLoadingOrgs}
             />
             
@@ -493,17 +404,9 @@ const Dashboard = () => {
                 data={users}
                 searchTerm={searchTerm}
                 setSearchTerm={setSearchTerm}
-                onEdit={handleEditUser}
-                onDelete={handleDeleteUser}
+                readOnly={true}
               />
             )}
-
-            <OrganizationModal
-              isOpen={isModalOpen}
-              onClose={handleCloseModal}
-              onSubmit={handleSubmitModal}
-              initialData={editingUser}
-            />
           </>
         );
 
@@ -515,6 +418,7 @@ const Dashboard = () => {
             onCreateDevice={handleCreateDevice}
             onUpdateDevice={handleUpdateDevice}
             onDeleteDevice={handleDeleteDevice}
+            db={db}
             isLoading={isLoadingDevices}
           />
         );

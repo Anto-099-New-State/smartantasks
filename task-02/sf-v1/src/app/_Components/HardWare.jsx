@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-
+import React, { useState, useEffect } from 'react';
+import { collection, getDocs } from 'firebase/firestore';
 
 const Hardware = ({ 
   organizations = [], 
@@ -7,7 +7,8 @@ const Hardware = ({
   onCreateDevice, 
   onUpdateDevice, 
   onDeleteDevice,
-  isLoading = false
+  isLoading = false,
+  db // Add Firebase db instance as prop
 }) => {
   // Hardware tab state (Camera or Sensor)
   const [activeHardwareTab, setActiveHardwareTab] = useState('Camera');
@@ -19,6 +20,10 @@ const Hardware = ({
   // Organization and gym search states
   const [orgSearchTerm, setOrgSearchTerm] = useState('');
   const [gymSearchTerm, setGymSearchTerm] = useState('');
+  
+  // ✅ NEW: State to store gyms for selected organization
+  const [availableGyms, setAvailableGyms] = useState([]);
+  const [gymsLoading, setGymsLoading] = useState(false);
   
   // Filter states with checkboxes
   const [assignmentFilters, setAssignmentFilters] = useState({
@@ -47,14 +52,14 @@ const Hardware = ({
   const [editingDevice, setEditingDevice] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // Form state
+  // Form state - FIXED: Using IDs for relationships
   const [formData, setFormData] = useState({
     deviceId: '',
     deviceType: activeHardwareTab.toLowerCase(),
     organization: 'Unassigned',
-    organizationId: null,
+    organizationId: null,        // ✅ ID for database relationship
     gym: '',
-    gymId: null,
+    gymId: null,                 // ✅ ID for database relationship
     ipAddress: '',
     modelNo: '',
     lens: '',
@@ -64,6 +69,39 @@ const Hardware = ({
     testingDate: new Date().toISOString().split('T')[0],
     remarks: ''
   });
+
+  // ✅ NEW: Function to fetch gyms for a specific organization
+  const fetchGymsForOrganization = async (organizationId) => {
+    if (!organizationId || !db) {
+      setAvailableGyms([]);
+      return;
+    }
+
+    setGymsLoading(true);
+    try {
+      const gymsRef = collection(db, 'organizations', organizationId, 'gyms');
+      const gymsSnapshot = await getDocs(gymsRef);
+      const gyms = gymsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setAvailableGyms(gyms);
+    } catch (error) {
+      console.error('Error fetching gyms:', error);
+      setAvailableGyms([]);
+    } finally {
+      setGymsLoading(false);
+    }
+  };
+
+  // ✅ NEW: Effect to fetch gyms when organization changes
+  useEffect(() => {
+    if (formData.organizationId) {
+      fetchGymsForOrganization(formData.organizationId);
+    } else {
+      setAvailableGyms([]);
+    }
+  }, [formData.organizationId, db]);
 
   // Initialize organization and gym filters when organizations change
   React.useEffect(() => {
@@ -133,14 +171,6 @@ const Hardware = ({
       }
     });
     return filteredGyms;
-  };
-
-  // Get available gyms for selected organization in form
-  const getAvailableGyms = () => {
-    if (formData.organization === 'Unassigned') return [];
-    
-    const selectedOrg = organizations.find(org => org.name === formData.organization);
-    return selectedOrg && selectedOrg.gyms ? selectedOrg.gyms : [];
   };
 
   // Get filtered devices based on active tab and filters
@@ -277,11 +307,11 @@ const Hardware = ({
            Object.values(testingStatusFilters).filter(Boolean).length;
   };
 
-  // Handle form input changes
+  // ✅ FIXED: Handle form input changes with proper ID mapping
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     
-    // If organization is selected, also set organizationId and reset gym
+    // If organization is selected, set both name and ID, reset gym
     if (name === 'organization') {
       if (value === 'Unassigned') {
         setFormData(prev => ({ 
@@ -292,8 +322,9 @@ const Hardware = ({
           gymId: null
         }));
       } else {
+        // ✅ FIXED: Find organization by name but store ID
         const selectedOrg = organizations.find(org => org.name === value);
-        console.log(selectedOrg);
+        console.log('Selected Organization:', selectedOrg);
         setFormData(prev => ({ 
           ...prev, 
           [name]: value,
@@ -303,7 +334,7 @@ const Hardware = ({
         }));
       }
     } 
-    // If gym is selected, also set gymId
+    // If gym is selected, set both name and ID
     else if (name === 'gym') {
       if (value === '') {
         setFormData(prev => ({ 
@@ -312,8 +343,9 @@ const Hardware = ({
           gymId: null
         }));
       } else {
-        const availableGyms = getAvailableGyms();
+        // ✅ FIXED: Find gym by name from availableGyms (fetched from subcollection)
         const selectedGym = availableGyms.find(gym => gym.name === value);
+        console.log('Selected Gym:', selectedGym);
         setFormData(prev => ({ 
           ...prev, 
           [name]: value,
@@ -325,26 +357,34 @@ const Hardware = ({
     }
   };
 
-  // Handle adding new device
+  console.log('Form Data:', formData);
+  console.log('Available Gyms:', availableGyms);
+
+  // ✅ FIXED: Handle adding new device with proper ID-based relationships
   const handleAddDevice = async (e) => {
     e.preventDefault();
     
     setIsSubmitting(true);
     
     try {
-      // Find the selected organization and gym
-      const selectedOrg = formData.organization !== 'Unassigned' 
-        ? organizations.find(org => org.name === formData.organization)
+      // ✅ FIXED: Find organization by ID (not name)
+      const selectedOrg = formData.organizationId !== null 
+        ? organizations.find(org => org.id === formData.organizationId)
         : null;
-           console.log(selectedOrg);
       
-      const selectedGym = formData.gym && selectedOrg && selectedOrg.gyms
-        ? selectedOrg.gyms.find(gym => gym.name === formData.gym)
+      console.log('Selected Organization for Create:', selectedOrg);
+      
+      // ✅ FIXED: Find gym by ID from fetched availableGyms
+      const selectedGym = formData.gymId && availableGyms.length > 0
+        ? availableGyms.find(gym => gym.id === formData.gymId)
         : null;
+      
+      console.log('Selected Gym for Create:', selectedGym);
       
       // Auto-determine status based on assignment
       const deviceStatus = formData.organization === 'Unassigned' ? 'Inventory' : 'Assigned';
       
+      // ✅ FIXED: Create device with proper ID references and cached names
       const newDevice = {
         deviceName: formData.deviceId,
         serial: Math.random().toString().substring(2, 12),
@@ -352,15 +392,19 @@ const Hardware = ({
         stickerStatus: formData.stickerStatus,
         ipAddress: formData.ipAddress,
         testing: formData.testingStatus,
-        organization: formData.organization,
+        // ✅ Store both ID and name for organization
         organizationId: selectedOrg ? selectedOrg.id : null,
-        gym: formData.gym || null,
+        organization: selectedOrg ? selectedOrg.name : 'Unassigned',
+        // ✅ Store both ID and name for gym
         gymId: selectedGym ? selectedGym.id : null,
-        status: deviceStatus, // Auto-set based on assignment
+        gym: selectedGym ? selectedGym.name : null,
+        status: deviceStatus,
         modelNo: formData.modelNo,
         lens: formData.lens || 'N/A',
         avatar: activeHardwareTab === 'Camera' ? '📷' : '📊'
       };
+      
+      console.log('Device data to save:', newDevice);
       
       // Call the parent's create function (this will handle Firestore)
       await onCreateDevice(newDevice);
@@ -375,15 +419,15 @@ const Hardware = ({
   };
 
   // Handle editing device
-  const handleEditDevice = (device) => {
+  const handleEditDevice = async (device) => {
     setEditingDevice(device);
     setFormData({
       deviceId: device.deviceName,
       deviceType: device.deviceType,
       organization: device.organization || 'Unassigned',
-      organizationId: device.organizationId,
+      organizationId: device.organizationId || null,  // ✅ Load existing ID
       gym: device.gym || '',
-      gymId: device.gymId,
+      gymId: device.gymId || null,                    // ✅ Load existing ID
       ipAddress: device.ipAddress,
       modelNo: device.modelNo,
       lens: device.lens,
@@ -393,43 +437,58 @@ const Hardware = ({
       testingDate: device.testingDate || new Date().toISOString().split('T')[0],
       remarks: device.remarks || ''
     });
+    
+    // ✅ NEW: If device has an organization, fetch its gyms
+    if (device.organizationId) {
+      await fetchGymsForOrganization(device.organizationId);
+    }
+    
     setIsModalOpen(true);
   };
 
-  // Handle updating device
+  // ✅ FIXED: Handle updating device with proper ID-based relationships
   const handleUpdateDevice = async (e) => {
     e.preventDefault();
     
     setIsSubmitting(true);
     
     try {
-      // Find the selected organization and gym
-      const selectedOrg = formData.organization !== 'Unassigned' 
-        ? organizations.find(org => org.name === formData.organization)
+      // ✅ FIXED: Find organization by ID (not name)
+      const selectedOrg = formData.organizationId !== null 
+        ? organizations.find(org => org.id === formData.organizationId)
         : null;
-                console.log(selectedOrg);
       
-      const selectedGym = formData.gym && selectedOrg && selectedOrg.gyms
-        ? selectedOrg.gyms.find(gym => gym.name === formData.gym)
+      console.log('Selected Organization for Update:', selectedOrg);
+      
+      // ✅ FIXED: Find gym by ID from fetched availableGyms
+      const selectedGym = formData.gymId && availableGyms.length > 0
+        ? availableGyms.find(gym => gym.id === formData.gymId)
         : null;
+      
+      console.log('Selected Gym for Update:', selectedGym);
       
       // Auto-determine status based on assignment
       const deviceStatus = formData.organization === 'Unassigned' ? 'Inventory' : 'Assigned';
       
+      // ✅ FIXED: Update device with proper ID references and cached names
       const updatedDevice = {
         ...editingDevice,
         deviceName: formData.deviceId,
-        organization: formData.organization,
+        // ✅ Store both ID and name for organization
         organizationId: selectedOrg ? selectedOrg.id : null,
-        gym: formData.gym || null,
+        organization: selectedOrg ? selectedOrg.name : 'Unassigned',
+        // ✅ Store both ID and name for gym
         gymId: selectedGym ? selectedGym.id : null,
+        gym: selectedGym ? selectedGym.name : null,
         ipAddress: formData.ipAddress,
         modelNo: formData.modelNo,
         lens: formData.lens,
         stickerStatus: formData.stickerStatus,
         testing: formData.testingStatus,
-        status: deviceStatus // Auto-update status based on assignment
+        status: deviceStatus
       };
+      
+      console.log('Updated device data to save:', updatedDevice);
       
       // Call the parent's update function (this will handle Firestore)
       await onUpdateDevice(updatedDevice);
@@ -479,6 +538,7 @@ const Hardware = ({
       testingDate: new Date().toISOString().split('T')[0], 
       remarks: ''
     });
+    setAvailableGyms([]); // ✅ Clear available gyms when resetting form
   };
 
   // Get status colors
@@ -505,7 +565,6 @@ const Hardware = ({
   const filteredDevices = getFilteredDevices();
   const filteredOrganizations = getFilteredOrganizations();
   const filteredGyms = getFilteredGyms();
-  const availableGyms = getAvailableGyms();
   const deviceCounts = {
     camera: devices.filter(d => d.deviceType === 'camera').length,
     sensor: devices.filter(d => d.deviceType === 'sensor').length
@@ -671,227 +730,6 @@ const Hardware = ({
             )}
           </div>
         </div>
-
-        {/* Expandable Filter Panel */}
-        {showFilters && (
-          <div className="border-b border-gray-200 bg-gray-50">
-            <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-                
-                {/* Assignment Filters */}
-                <div>
-                  <h3 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
-                    <span className="text-lg">📋</span>
-                    ASSIGNMENT
-                  </h3>
-                  <div className="space-y-2">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={assignmentFilters.assigned}
-                        onChange={() => handleAssignmentFilterChange('assigned')}
-                        className="rounded border-gray-300 focus:ring-blue-500"
-                      />
-                      <span className="text-sm">Assigned ({devices.filter(d => d.organization && d.organization !== 'Unassigned').length})</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={assignmentFilters.unassigned}
-                        onChange={() => handleAssignmentFilterChange('unassigned')}
-                        className="rounded border-gray-300 focus:ring-blue-500"
-                      />
-                      <span className="text-sm">Unassigned ({devices.filter(d => d.organization === 'Unassigned' || !d.organization).length})</span>
-                    </label>
-                  </div>
-                </div>
-
-                {/* Organization Filters with Search */}
-                <div>
-                  <h3 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
-                    <span className="text-lg">🏢</span>
-                    ORGANIZATION
-                  </h3>
-                  
-                  {/* Organization Search */}
-                  <div className="mb-3">
-                    <input
-                      type="text"
-                      placeholder="Search organizations..."
-                      value={orgSearchTerm}
-                      onChange={(e) => setOrgSearchTerm(e.target.value)}
-                      className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                  
-                  {/* Organization Checkboxes */}
-                  <div className="space-y-2 max-h-40 overflow-y-auto border border-gray-200 rounded p-2 bg-white">
-                    {filteredOrganizations.length > 0 ? (
-                      filteredOrganizations.map((org) => {
-                        const count = devices.filter(d => d.organization === org.name).length;
-                        return (
-                          <label key={org.id} className="flex items-center gap-2 cursor-pointer p-1 hover:bg-gray-50 rounded">
-                            <input
-                              type="checkbox"
-                              checked={organizationFilters[org.name] || false}
-                              onChange={() => handleOrganizationFilterChange(org.name)}
-                              className="rounded border-gray-300 focus:ring-blue-500"
-                            />
-                            <span className="text-sm truncate" title={org.name}>
-                              {org.name} ({count})
-                            </span>
-                          </label>
-                        );
-                      })
-                    ) : (
-                      <div className="text-sm text-gray-500 p-2 text-center">
-                        {orgSearchTerm ? 'No organizations match your search' : 'No organizations available'}
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* Show count of filtered orgs */}
-                  {orgSearchTerm && (
-                    <div className="mt-2 text-xs text-gray-500">
-                      Showing {filteredOrganizations.length} of {organizations.length} organizations
-                    </div>
-                  )}
-                </div>
-
-                {/* Gym Filters with Search */}
-                <div>
-                  <h3 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
-                    <span className="text-lg">🏋️</span>
-                    GYM LOCATION
-                  </h3>
-                  
-                  {/* Gym Search */}
-                  <div className="mb-3">
-                    <input
-                      type="text"
-                      placeholder="Search gyms..."
-                      value={gymSearchTerm}
-                      onChange={(e) => setGymSearchTerm(e.target.value)}
-                      className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                  
-                  {/* Gym Checkboxes */}
-                  <div className="space-y-2 max-h-40 overflow-y-auto border border-gray-200 rounded p-2 bg-white">
-                    {filteredGyms.length > 0 ? (
-                      filteredGyms.map((gym) => {
-                        const count = devices.filter(d => d.gym === gym.name && d.organization === gym.organizationName).length;
-                        return (
-                          <label key={gym.key} className="flex items-center gap-2 cursor-pointer p-1 hover:bg-gray-50 rounded">
-                            <input
-                              type="checkbox"
-                              checked={gymFilters[gym.key] || false}
-                              onChange={() => handleGymFilterChange(gym.key)}
-                              className="rounded border-gray-300 focus:ring-blue-500"
-                            />
-                            <div className="text-sm">
-                              <div className="font-medium truncate" title={gym.name}>
-                                {gym.name} ({count})
-                              </div>
-                              <div className="text-xs text-gray-500 truncate" title={gym.organizationName}>
-                                {gym.organizationName}
-                              </div>
-                            </div>
-                          </label>
-                        );
-                      })
-                    ) : (
-                      <div className="text-sm text-gray-500 p-2 text-center">
-                        {gymSearchTerm ? 'No gyms match your search' : 'No gyms available'}
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* Show count of filtered gyms */}
-                  {gymSearchTerm && (
-                    <div className="mt-2 text-xs text-gray-500">
-                      Showing {filteredGyms.length} gyms
-                    </div>
-                  )}
-                </div>
-
-                {/* Sticker Status Filters */}
-                <div>
-                  <h3 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
-                    <span className="text-lg">🏷️</span>
-                    STICKER STATUS
-                  </h3>
-                  <div className="space-y-2">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={stickerStatusFilters.pending}
-                        onChange={() => handleStickerStatusFilterChange('pending')}
-                        className="rounded border-gray-300 focus:ring-blue-500"
-                      />
-                      <span className="text-sm">Pending ({devices.filter(d => d.stickerStatus === 'Pending').length})</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={stickerStatusFilters.applied}
-                        onChange={() => handleStickerStatusFilterChange('applied')}
-                        className="rounded border-gray-300 focus:ring-blue-500"
-                      />
-                      <span className="text-sm">Applied ({devices.filter(d => d.stickerStatus === 'Applied').length})</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={stickerStatusFilters.notApplied}
-                        onChange={() => handleStickerStatusFilterChange('notApplied')}
-                        className="rounded border-gray-300 focus:ring-blue-500"
-                      />
-                      <span className="text-sm">Not Applied ({devices.filter(d => d.stickerStatus === 'Not Applied').length})</span>
-                    </label>
-                  </div>
-                </div>
-
-                {/* Testing Status Filters */}
-                <div>
-                  <h3 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
-                    <span className="text-lg">🧪</span>
-                    TESTING STATUS
-                  </h3>
-                  <div className="space-y-2">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={testingStatusFilters.notTested}
-                        onChange={() => handleTestingStatusFilterChange('notTested')}
-                        className="rounded border-gray-300 focus:ring-blue-500"
-                      />
-                      <span className="text-sm">Not Tested ({devices.filter(d => d.testing === 'not tested yet').length})</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={testingStatusFilters.passed}
-                        onChange={() => handleTestingStatusFilterChange('passed')}
-                        className="rounded border-gray-300 focus:ring-blue-500"
-                      />
-                      <span className="text-sm">Passed ({devices.filter(d => d.testing === 'passed').length})</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={testingStatusFilters.failed}
-                        onChange={() => handleTestingStatusFilterChange('failed')}
-                        className="rounded border-gray-300 focus:ring-blue-500"
-                      />
-                      <span className="text-sm">Failed ({devices.filter(d => d.testing === 'failed').length})</span>
-                    </label>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Device Table */}
         <div className="overflow-x-auto">
@@ -1086,39 +924,56 @@ const Hardware = ({
               </div>
 
               {/* Gym Selection (only when organization is selected) */}
-              {formData.organization !== 'Unassigned' && availableGyms.length > 0 && (
+              {formData.organization !== 'Unassigned' && (
                 <div>
-                  <label className="block text-sm mb-1 text-blue-400">Gym Location</label>
-                  <select
-                    name="gym"
-                    value={formData.gym}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white focus:ring-2 focus:ring-blue-500"
-                    disabled={isSubmitting}
-                  >
-                    <option value="">Select a gym (optional)</option>
-                    {availableGyms.map((gym) => (
-                      <option key={gym.id} value={gym.name}>
-                        🏋️ {gym.name}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="text-xs text-gray-400 mt-1">
-                    Select specific gym location within {formData.organization}
-                  </div>
-                </div>
-              )}
-
-              {/* Show message when organization has no gyms */}
-              {formData.organization !== 'Unassigned' && availableGyms.length === 0 && (
-                <div className="bg-slate-600 border border-slate-500 rounded p-3">
-                  <div className="text-sm text-yellow-400 flex items-center gap-2">
-                    <span>⚠️</span>
-                    No gym locations found for {formData.organization}
-                  </div>
-                  <div className="text-xs text-gray-400 mt-1">
-                    Device will be assigned to organization level only
-                  </div>
+                  <label className="block text-sm mb-1 text-blue-400">
+                    Gym Location
+                    {gymsLoading && (
+                      <span className="ml-2 text-xs text-yellow-400">
+                        🔄 Loading gyms...
+                      </span>
+                    )}
+                  </label>
+                  
+                  {availableGyms.length > 0 ? (
+                    <select
+                      name="gym"
+                      value={formData.gym}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white focus:ring-2 focus:ring-blue-500"
+                      disabled={isSubmitting || gymsLoading}
+                    >
+                      <option value="">Select a gym (optional)</option>
+                      {availableGyms.map((gym) => (
+                        <option key={gym.id} value={gym.name}>
+                          🏋️ {gym.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : !gymsLoading ? (
+                    <div className="bg-slate-600 border border-slate-500 rounded p-3">
+                      <div className="text-sm text-yellow-400 flex items-center gap-2">
+                        <span>⚠️</span>
+                        No gym locations found for {formData.organization}
+                      </div>
+                      <div className="text-xs text-gray-400 mt-1">
+                        Device will be assigned to organization level only
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-slate-700 border border-slate-600 rounded p-3">
+                      <div className="text-sm text-blue-400 flex items-center gap-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400"></div>
+                        Loading gym locations...
+                      </div>
+                    </div>
+                  )}
+                  
+                  {availableGyms.length > 0 && (
+                    <div className="text-xs text-gray-400 mt-1">
+                      Select specific gym location within {formData.organization}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1201,7 +1056,7 @@ const Hardware = ({
               {/* Submit Button */}
               <button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSubmitting || gymsLoading}
                 className="w-full bg-blue-600 text-white py-3 rounded hover:bg-blue-700 font-medium mt-6 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSubmitting ? (

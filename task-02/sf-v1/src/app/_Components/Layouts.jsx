@@ -2,12 +2,22 @@ import React, { useState, useEffect } from 'react';
 import { 
   collection, 
   getDocs, 
+  addDoc,
   query, 
   where, 
   orderBy,
+  doc,
+  setDoc,
+  deleteDoc,
   onSnapshot 
 } from 'firebase/firestore';
-import { db } from '../api/firebase';
+import { 
+  ref, 
+  uploadBytes, 
+  getDownloadURL, 
+  deleteObject 
+} from 'firebase/storage';
+import { db, storage } from '../api/firebase';
 
 function Layouts() {
   // Selection states
@@ -29,10 +39,72 @@ function Layouts() {
   const [hotspots, setHotspots] = useState([]);
   const [activeHotspot, setActiveHotspot] = useState(null);
   
+  // ✅ NEW: Load existing layouts for selected organization/gym
+  const [savedLayouts, setSavedLayouts] = useState([]);
+  const [isLoadingLayouts, setIsLoadingLayouts] = useState(false);
+  
   // UI states
   const [showCameraSelector, setShowCameraSelector] = useState(false);
   const [pendingHotspot, setPendingHotspot] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // ✅ NEW: Fetch saved layouts from Firestore
+  const fetchSavedLayouts = async (organizationId, gymId = null) => {
+    if (!organizationId) {
+      setSavedLayouts([]);
+      return;
+    }
+
+    setIsLoadingLayouts(true);
+    try {
+      const basePath = gymId 
+        ? `organizations/${organizationId}/gyms/${gymId}/layouts`
+        : `organizations/${organizationId}/layouts`;
+      
+      const layoutsRef = collection(db, basePath);
+      const q = query(layoutsRef, orderBy('updatedAt', 'desc'));
+      const querySnapshot = await getDocs(q);
+      
+      const layoutsData = [];
+      querySnapshot.forEach((doc) => {
+        layoutsData.push({
+          id: doc.id,
+          ...doc.data()
+        });
+      });
+      
+      setSavedLayouts(layoutsData);
+      console.log('Saved layouts loaded:', layoutsData);
+      
+    } catch (error) {
+      console.error('Error fetching saved layouts:', error);
+      setSavedLayouts([]);
+    } finally {
+      setIsLoadingLayouts(false);
+    }
+  };
+
+  // ✅ NEW: Load custom layouts when organization/gym changes
+  useEffect(() => {
+    if (selectedOrganization) {
+      fetchCustomLayouts(selectedOrganization.id, selectedGym?.id || null);
+    } else {
+      setCustomLayouts([]);
+    }
+  }, [selectedOrganization, selectedGym]);
+
+  // ✅ NEW: Load hotspots from a saved layout
+  const loadSavedLayout = (savedLayout) => {
+    if (savedLayout.hotspots && savedLayout.hotspots.length > 0) {
+      // Find the matching layout
+      const layout = layouts.find(l => l.id === savedLayout.layoutId);
+      if (layout) {
+        setSelectedLayout(layout);
+        setHotspots(savedLayout.hotspots);
+        console.log('Loaded saved layout:', savedLayout);
+      }
+    }
+  };
 
   // Static layouts for now (can be made dynamic later)
   const [layouts] = useState([
@@ -67,7 +139,7 @@ function Layouts() {
     }
   };
 
-  // Fetch gyms for selected organization
+  // ✅ FIXED: Fetch gyms from subcollection for selected organization
   const fetchGyms = async (organizationId) => {
     if (!organizationId) {
       setGyms([]);
@@ -76,12 +148,9 @@ function Layouts() {
 
     setIsLoadingGyms(true);
     try {
-      const q = query(
-        collection(db, 'gyms'), 
-        where('organizationId', '==', organizationId),
-        orderBy('name'),
-        console.log(db)
-      );
+      // ✅ Query the subcollection instead of separate collection
+      const gymsRef = collection(db, 'organizations', organizationId, 'gyms');
+      const q = query(gymsRef, orderBy('name'));
       const querySnapshot = await getDocs(q);
       const gymsData = [];
       
@@ -95,14 +164,14 @@ function Layouts() {
       setGyms(gymsData);
       console.log('Gyms loaded for org:', organizationId, gymsData);
     } catch (error) {
-      console.error('Error fetching gyms:', error);
+      console.error('Error fetching gyms from subcollection:', error);
       setGyms([]);
     } finally {
       setIsLoadingGyms(false);
     }
   };
 
-  // Fetch devices (cameras) for selected organization/gym
+  // ✅ ENHANCED: Fetch devices with proper gym and organization mapping
   const fetchDevices = async (organizationId, gymId = null) => {
     if (!organizationId) {
       setDevices([]);
@@ -111,39 +180,61 @@ function Layouts() {
 
     setIsLoadingDevices(true);
     try {
-      let q;
+      let devicesData = [];
       
       if (gymId) {
-        // Fetch devices for specific gym
-        q = query(
+        // ✅ Fetch devices specifically assigned to this gym
+        console.log(`Fetching devices for gym: ${gymId} in organization: ${organizationId}`);
+        
+        const gymDevicesQuery = query(
           collection(db, 'devices'),
           where('organizationId', '==', organizationId),
           where('gymId', '==', gymId),
-          where('deviceType', '==', 'camera'),
-          orderBy('deviceName')
+          where('deviceType', '==', 'camera')
         );
+        
+        const gymSnapshot = await getDocs(gymDevicesQuery);
+        gymSnapshot.forEach((doc) => {
+          const deviceData = { id: doc.id, ...doc.data() };
+          devicesData.push(deviceData);
+        });
+        
+        console.log(`Found ${devicesData.length} devices assigned to gym ${gymId}`);
+        
       } else {
-        // Fetch devices for organization level
-        q = query(
+        // ✅ Fetch devices at organization level (no specific gym assignment)
+        console.log(`Fetching organization-level devices for: ${organizationId}`);
+        
+        // Query for devices that belong to organization but have no gym assignment
+        const orgDevicesQuery = query(
           collection(db, 'devices'),
           where('organizationId', '==', organizationId),
-          where('deviceType', '==', 'camera'),
-          orderBy('deviceName')
+          where('deviceType', '==', 'camera')
         );
+        
+        const orgSnapshot = await getDocs(orgDevicesQuery);
+        orgSnapshot.forEach((doc) => {
+          const deviceData = { id: doc.id, ...doc.data() };
+          
+          // ✅ Only include devices that don't have a gymId (organization-level devices)
+          if (!deviceData.gymId || deviceData.gymId === null || deviceData.gymId === '') {
+            devicesData.push(deviceData);
+          }
+        });
+        
+        console.log(`Found ${devicesData.length} organization-level devices`);
       }
       
-      const querySnapshot = await getDocs(q);
-      const devicesData = [];
-      
-      querySnapshot.forEach((doc) => {
-        devicesData.push({
-          id: doc.id,
-          ...doc.data()
-        });
+      // ✅ Sort devices by name for consistent display
+      devicesData.sort((a, b) => {
+        const nameA = a.deviceName || '';
+        const nameB = b.deviceName || '';
+        return nameA.localeCompare(nameB);
       });
       
       setDevices(devicesData);
-      console.log('Devices loaded:', devicesData);
+      console.log('Final devices loaded:', devicesData);
+      
     } catch (error) {
       console.error('Error fetching devices:', error);
       setDevices([]);
@@ -157,11 +248,10 @@ function Layouts() {
     fetchOrganizations();
   }, []);
 
-  // Fetch gyms when organization is selected
+  // ✅ FIXED: Fetch gyms when organization is selected
   useEffect(() => {
     if (selectedOrganization) {
       fetchGyms(selectedOrganization.id);
-      console.log(selectedOrganization.id);
     } else {
       setGyms([]);
     }
@@ -194,12 +284,21 @@ function Layouts() {
     setHotspots([]);
   }, [selectedLayout]);
 
-  // Get available cameras (filter by status)
+  // ✅ ENHANCED: Get available cameras with better filtering and status info
   const getAvailableCameras = () => {
-    return devices.filter(device => 
-      device.status === 'Inventory' || 
-      device.status === 'Assigned'
-    );
+    return devices.filter(device => {
+      // Only show cameras that are available for placement
+      const isAvailable = device.status === 'Inventory' || 
+                         device.status === 'Assigned' || 
+                         device.status === 'Active';
+      
+      // ✅ Additional check: make sure device matches current selection context
+      const matchesContext = selectedGym 
+        ? device.gymId === selectedGym.id 
+        : (!device.gymId || device.gymId === null);
+      
+      return isAvailable && matchesContext;
+    });
   };
 
   // Filter cameras based on search term
@@ -227,7 +326,7 @@ function Layouts() {
     setShowCameraSelector(true);
   };
 
-  // Handle camera selection for hotspot
+  // ✅ ENHANCED: Handle camera selection for hotspot with better data structure
   const handleCameraSelect = (camera) => {
     if (pendingHotspot) {
       const newHotspot = {
@@ -235,18 +334,25 @@ function Layouts() {
         x: pendingHotspot.x,
         y: pendingHotspot.y,
         camera: camera,
+        // ✅ Store proper IDs and names
         organizationId: selectedOrganization.id,
         organizationName: selectedOrganization.name,
         gymId: selectedGym?.id || null,
         gymName: selectedGym?.name || 'Organization Level',
         layoutId: selectedLayout.id,
-        layoutName: selectedLayout.name
+        layoutName: selectedLayout.name,
+        // ✅ Additional metadata for better tracking
+        createdAt: new Date().toISOString(),
+        cameraId: camera.id,
+        cameraName: camera.deviceName
       };
       
       setHotspots([...hotspots, newHotspot]);
       setShowCameraSelector(false);
       setPendingHotspot(null);
       setSearchTerm('');
+      
+      console.log('Camera placed:', newHotspot);
     }
   };
 
@@ -254,6 +360,67 @@ function Layouts() {
   const removeHotspot = (hotspotId) => {
     setHotspots(hotspots.filter(h => h.id !== hotspotId));
     setActiveHotspot(null);
+  };
+
+  // ✅ IMPLEMENTED: Save hotspots to Firestore
+  const saveHotspotsToFirestore = async () => {
+    if (!selectedOrganization || !selectedLayout || hotspots.length === 0) {
+      console.warn('Cannot save: Missing organization, layout, or no hotspots');
+      alert('Cannot save: Please select organization, layout, and place at least one camera');
+      return;
+    }
+
+    try {
+      console.log('Saving hotspots to Firestore:', hotspots);
+      
+      // ✅ Save to different paths based on selection context
+      const basePath = selectedGym 
+        ? `organizations/${selectedOrganization.id}/gyms/${selectedGym.id}/layouts`
+        : `organizations/${selectedOrganization.id}/layouts`;
+      
+      // ✅ Create layout document with metadata and hotspots
+      const layoutData = {
+        layoutId: selectedLayout.id,
+        layoutName: selectedLayout.name,
+        organizationId: selectedOrganization.id,
+        organizationName: selectedOrganization.name,
+        gymId: selectedGym?.id || null,
+        gymName: selectedGym?.name || 'Organization Level',
+        totalCameras: hotspots.length,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        hotspots: hotspots.map(hotspot => ({
+          id: hotspot.id,
+          x: hotspot.x,
+          y: hotspot.y,
+          cameraId: hotspot.cameraId,
+          cameraName: hotspot.cameraName,
+          camera: {
+            id: hotspot.camera.id,
+            deviceName: hotspot.camera.deviceName,
+            serial: hotspot.camera.serial,
+            modelNo: hotspot.camera.modelNo,
+            ipAddress: hotspot.camera.ipAddress,
+            status: hotspot.camera.status
+          },
+          createdAt: hotspot.createdAt
+        }))
+      };
+      
+      // ✅ Save layout to Firestore
+      const layoutRef = collection(db, basePath);
+      const layoutDocRef = await addDoc(layoutRef, layoutData);
+      
+      console.log('Layout saved successfully with ID:', layoutDocRef.id);
+      alert(`Layout saved successfully! ${hotspots.length} cameras placed in ${selectedLayout.name}`);
+      
+      // ✅ Optional: Clear hotspots after successful save
+      // setHotspots([]);
+      
+    } catch (error) {
+      console.error('Error saving layout to Firestore:', error);
+      alert('Error saving layout. Please try again.');
+    }
   };
 
   const filteredCameras = getFilteredCameras();
@@ -333,7 +500,7 @@ function Layouts() {
             isLoadingGyms ? (
               <div className="flex items-center justify-center py-8">
                 <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                <span className="ml-2 text-sm text-gray-600">Loading gyms...</span>
+                <span className="ml-2 text-sm text-gray-600">Loading gyms from subcollection...</span>
               </div>
             ) : (
               <div className="space-y-2 max-h-60 overflow-y-auto">
@@ -350,7 +517,7 @@ function Layouts() {
                   <div className="text-sm text-gray-500">General organization layout</div>
                 </button>
                 
-                {/* Individual Gyms */}
+                {/* Individual Gyms from Subcollection */}
                 {gyms.length > 0 ? (
                   gyms.map((gym) => (
                     <button
@@ -366,11 +533,22 @@ function Layouts() {
                       <div className="text-sm text-gray-500">
                         ID: {gym.id} | Org: {selectedOrganization.name}
                       </div>
+                      {gym.address && (
+                        <div className="text-xs text-gray-400">
+                          📍 {gym.address}
+                        </div>
+                      )}
                     </button>
                   ))
                 ) : (
-                  <div className="text-sm text-gray-500 p-3 bg-gray-50 rounded">
-                    No gym locations found for this organization
+                  <div className="text-sm text-gray-500 p-3 bg-yellow-50 border border-yellow-200 rounded">
+                    <div className="flex items-center gap-2 text-yellow-800">
+                      <span>⚠️</span>
+                      No gym locations found in subcollection
+                    </div>
+                    <div className="text-xs text-yellow-600 mt-1">
+                      Gyms should be stored under: organizations/{selectedOrganization.id}/gyms
+                    </div>
                   </div>
                 )}
               </div>
@@ -392,22 +570,98 @@ function Layouts() {
           </div>
           
           {selectedOrganization ? (
-            <div className="space-y-2 max-h-60 overflow-y-auto">
-              {layouts.map((layout) => (
+            <>
+              {/* Upload Layout Button */}
+              <div className="mb-4">
                 <button
-                  key={layout.id}
-                  onClick={() => setSelectedLayout(layout)}
-                  className={`w-full text-left p-3 rounded border transition-colors ${
-                    selectedLayout?.id === layout.id
-                      ? 'bg-blue-100 border-blue-300 text-blue-800'
-                      : 'hover:bg-gray-50 border-gray-200'
-                  }`}
+                  onClick={() => setShowUploadModal(true)}
+                  className="w-full p-3 border-2 border-dashed border-blue-300 rounded-lg text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
                 >
-                  <div className="font-medium">📐 {layout.name}</div>
-                  <div className="text-sm text-gray-500">Floor plan layout</div>
+                  <span className="text-lg">📤</span>
+                  Upload Custom Layout
                 </button>
-              ))}
-            </div>
+              </div>
+
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {/* Predefined Layouts */}
+                <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+                  Predefined Layouts
+                </div>
+                {layouts.map((layout) => (
+                  <button
+                    key={layout.id}
+                    onClick={() => setSelectedLayout(layout)}
+                    className={`w-full text-left p-3 rounded border transition-colors ${
+                      selectedLayout?.id === layout.id
+                        ? 'bg-blue-100 border-blue-300 text-blue-800'
+                        : 'hover:bg-gray-50 border-gray-200'
+                    }`}
+                  >
+                    <div className="font-medium">📐 {layout.name}</div>
+                    <div className="text-sm text-gray-500">Floor plan layout</div>
+                  </button>
+                ))}
+
+                {/* Custom Layouts */}
+                {customLayouts.length > 0 && (
+                  <>
+                    <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2 mt-4 flex items-center gap-2">
+                      Custom Layouts ({customLayouts.length})
+                      {isLoadingCustomLayouts && (
+                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
+                      )}
+                    </div>
+                    {customLayouts.map((layout) => (
+                      <div
+                        key={layout.id}
+                        className={`relative border rounded transition-colors ${
+                          selectedLayout?.id === layout.id
+                            ? 'bg-green-100 border-green-300'
+                            : 'border-gray-200'
+                        }`}
+                      >
+                        <button
+                          onClick={() => setSelectedLayout({
+                            ...layout,
+                            image: layout.imageURL
+                          })}
+                          className="w-full text-left p-3 hover:bg-gray-50 transition-colors"
+                        >
+                          <div className="font-medium">🖼️ {layout.name}</div>
+                          <div className="text-sm text-gray-500">
+                            {layout.description || 'Custom layout'}
+                          </div>
+                          <div className="text-xs text-gray-400">
+                            {(layout.fileSize / 1024 / 1024).toFixed(1)}MB • 
+                            Created: {new Date(layout.createdAt).toLocaleDateString()}
+                          </div>
+                        </button>
+                        
+                        {/* Delete Button */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteCustomLayout(layout);
+                          }}
+                          className="absolute top-2 right-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs hover:bg-red-600 transition-colors flex items-center justify-center"
+                          title="Delete layout"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </>
+                )}
+
+                {/* Loading State for Custom Layouts */}
+                {isLoadingCustomLayouts && customLayouts.length === 0 && (
+                  <div className="flex items-center justify-center py-4">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                    <span className="ml-2 text-sm text-gray-600">Loading custom layouts...</span>
+                  </div>
+                )}
+              </div>
+            </>
           ) : (
             <div className="text-sm text-gray-500 p-3 bg-gray-50 rounded">
               Select an organization first
@@ -440,12 +694,69 @@ function Layouts() {
           
           <div className="mt-2 text-sm text-blue-700">
             Available cameras: {filteredCameras.length} | Placed cameras: {hotspots.length}
+            {selectedGym ? (
+              <span className="ml-2 text-xs bg-blue-200 px-2 py-1 rounded">
+                📍 Showing cameras assigned to {selectedGym.name}
+              </span>
+            ) : (
+              <span className="ml-2 text-xs bg-blue-200 px-2 py-1 rounded">
+                📍 Showing organization-level cameras (no gym assignment)
+              </span>
+            )}
             {isLoadingDevices && (
               <span className="ml-2">
                 <span className="animate-spin inline-block">⟳</span> Loading cameras...
               </span>
             )}
           </div>
+          
+          {/* ✅ NEW: Save button and saved layouts display */}
+          {hotspots.length > 0 && (
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={saveHotspotsToFirestore}
+                className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 transition-colors"
+              >
+                💾 Save Layout ({hotspots.length} cameras)
+              </button>
+              <button
+                onClick={() => setHotspots([])}
+                className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700 transition-colors"
+              >
+                🗑️ Clear All
+              </button>
+            </div>
+          )}
+          
+          {/* ✅ NEW: Show saved layouts */}
+          {savedLayouts.length > 0 && (
+            <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded">
+              <h5 className="font-medium text-green-800 mb-2">
+                📁 Saved Layouts ({savedLayouts.length})
+              </h5>
+              <div className="space-y-1">
+                {savedLayouts.slice(0, 3).map((savedLayout) => (
+                  <button
+                    key={savedLayout.id}
+                    onClick={() => loadSavedLayout(savedLayout)}
+                    className="w-full text-left p-2 text-xs bg-white border border-green-300 rounded hover:bg-green-50 transition-colors"
+                  >
+                    <div className="font-medium">
+                      📐 {savedLayout.layoutName} ({savedLayout.totalCameras} cameras)
+                    </div>
+                    <div className="text-green-600">
+                      Saved: {new Date(savedLayout.updatedAt).toLocaleDateString()}
+                    </div>
+                  </button>
+                ))}
+                {savedLayouts.length > 3 && (
+                  <div className="text-xs text-green-600">
+                    + {savedLayouts.length - 3} more saved layouts
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -534,6 +845,153 @@ function Layouts() {
         </div>
       )}
 
+      {/* Layout Upload Modal */}
+      {showUploadModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-96 max-w-[90vw] max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Upload Custom Layout</h3>
+              <button
+                onClick={() => {
+                  setShowUploadModal(false);
+                  setUploadForm({
+                    name: '',
+                    description: '',
+                    file: null,
+                    filePreview: null
+                  });
+                }}
+                className="text-gray-400 hover:text-gray-600 text-2xl"
+                disabled={isUploading}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Context Info */}
+              <div className="p-3 bg-blue-50 rounded border border-blue-200">
+                <div className="text-sm text-blue-800">
+                  <strong>Uploading to:</strong> {selectedOrganization?.name}
+                  {selectedGym && ` → ${selectedGym.name}`}
+                </div>
+              </div>
+
+              {/* Layout Name */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Layout Name *
+                </label>
+                <input
+                  type="text"
+                  value={uploadForm.name}
+                  onChange={(e) => setUploadForm(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="e.g., Ground Floor Plan, Warehouse Layout"
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  disabled={isUploading}
+                  maxLength={100}
+                />
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Description (Optional)
+                </label>
+                <textarea
+                  value={uploadForm.description}
+                  onChange={(e) => setUploadForm(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="Brief description of the layout..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  rows={3}
+                  disabled={isUploading}
+                  maxLength={500}
+                />
+              </div>
+
+              {/* File Upload */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Layout Image *
+                </label>
+                
+                {!uploadForm.filePreview ? (
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                    <div className="text-4xl mb-2">📁</div>
+                    <div className="text-sm text-gray-600 mb-3">
+                      Click to select an image file
+                    </div>
+                    
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileSelect}
+                      disabled={isUploading}
+                      className="hidden"
+                      id="layout-upload"
+                    />
+                    
+                    <label
+                      htmlFor="layout-upload"
+                      className={`inline-block px-4 py-2 bg-blue-600 text-white rounded cursor-pointer hover:bg-blue-700 transition-colors ${
+                        isUploading ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
+                    >
+                      Select Image
+                    </label>
+                  </div>
+                ) : (
+                  <div className="border border-gray-300 rounded-lg overflow-hidden">
+                    <img
+                      src={uploadForm.filePreview}
+                      alt="Preview"
+                      className="w-full h-48 object-cover"
+                    />
+                    <div className="p-3 bg-gray-50">
+                      <div className="text-sm font-medium">{uploadForm.file.name}</div>
+                      <div className="text-xs text-gray-500">
+                        {(uploadForm.file.size / 1024 / 1024).toFixed(1)}MB • {uploadForm.file.type}
+                      </div>
+                      <button
+                        onClick={() => setUploadForm(prev => ({ ...prev, file: null, filePreview: null }))}
+                        className="mt-2 text-xs text-red-600 hover:text-red-800"
+                        disabled={isUploading}
+                      >
+                        Remove image
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* File Requirements */}
+              <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded">
+                <strong>Requirements:</strong><br />
+                • Supported formats: JPEG, PNG, GIF, WebP<br />
+                • Max file size: 10MB<br />
+                • Recommended: High resolution floor plans or blueprints
+              </div>
+
+              {/* Upload Button */}
+              <button
+                onClick={handleLayoutUpload}
+                disabled={isUploading || !uploadForm.file || !uploadForm.name.trim()}
+                className="w-full bg-blue-600 text-white py-3 rounded hover:bg-blue-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isUploading ? (
+                  <div className="flex items-center justify-center gap-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Uploading to Firebase...
+                  </div>
+                ) : (
+                  'Upload Layout'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Camera Selector Modal */}
       {showCameraSelector && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -600,7 +1058,14 @@ function Layouts() {
                         Status: {camera.status} | IP: {camera.ipAddress || 'Not set'}
                       </div>
                       <div className="text-xs text-blue-600">
-                        ID: {camera.id}
+                        Org: {camera.organization || 'Unassigned'}
+                        {camera.gymId ? ` | Gym: ${camera.gym || 'Unknown Gym'}` : ' | Gym: Organization Level'}
+                      </div>
+                      <div className="text-xs text-green-600">
+                        Device ID: {camera.id}
+                      </div>
+                      <div className="text-xs text-purple-600">
+                        Org ID: {camera.organizationId} | Gym ID: {camera.gymId || 'None'}
                       </div>
                     </button>
                   ))
@@ -611,7 +1076,10 @@ function Layouts() {
                       {searchTerm ? 'No cameras match your search' : 'No cameras available for this location'}
                     </div>
                     <div className="text-xs text-gray-400 mt-2">
-                      Make sure cameras are assigned to this organization/gym
+                      {selectedGym 
+                        ? `Make sure cameras are assigned to gym "${selectedGym.name}" with gymId: ${selectedGym.id}`
+                        : `Make sure cameras are assigned to organization "${selectedOrganization?.name}" with organizationId: ${selectedOrganization?.id} and no gymId`
+                      }
                     </div>
                   </div>
                 )}
@@ -645,6 +1113,11 @@ function Layouts() {
             <div><strong>Layout:</strong> {activeHotspot.layoutName}</div>
             <div><strong>Position:</strong> {activeHotspot.x.toFixed(1)}%, {activeHotspot.y.toFixed(1)}%</div>
             <div><strong>Camera ID:</strong> {activeHotspot.camera.id}</div>
+            <div><strong>Org ID:</strong> {activeHotspot.organizationId}</div>
+            {activeHotspot.gymId && (
+              <div><strong>Gym ID:</strong> {activeHotspot.gymId}</div>
+            )}
+            <div><strong>Placed:</strong> {new Date(activeHotspot.createdAt).toLocaleString()}</div>
           </div>
           
           <div className="flex gap-2 mt-4">
@@ -670,13 +1143,72 @@ function Layouts() {
           <h4 className="font-medium text-gray-800 mb-2">Debug Info</h4>
           <div className="text-xs text-gray-600 space-y-1">
             <div>Organizations loaded: {organizations.length}</div>
-            <div>Gyms loaded: {gyms.length}</div>
+            <div>Gyms loaded (from subcollection): {gyms.length}</div>
             <div>Devices loaded: {devices.length}</div>
             <div>Available cameras: {filteredCameras.length}</div>
             <div>Selected Org ID: {selectedOrganization?.id || 'None'}</div>
             <div>Selected Gym ID: {selectedGym?.id || 'None'}</div>
             <div>Selected Layout: {selectedLayout?.name || 'None'}</div>
             <div>Hotspots placed: {hotspots.length}</div>
+            <div>Firebase Structure: organizations/{selectedOrganization?.id || 'orgId'}/gyms/{selectedGym?.id || 'gymId'}</div>
+            
+            {/* Show gym structure info */}
+            {selectedOrganization && (
+              <div className="mt-2 p-2 bg-blue-50 rounded border">
+                <div className="font-medium text-blue-800">Subcollection Query:</div>
+                <div className="text-blue-600">
+                  collection(db, 'organizations', '{selectedOrganization.id}', 'gyms')
+                </div>
+                {gyms.length > 0 && (
+                  <div className="mt-1">
+                    <div className="text-blue-800">Gyms found:</div>
+                    {gyms.map(gym => (
+                      <div key={gym.id} className="text-blue-600">
+                        • {gym.name} (ID: {gym.id})
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* Show device mapping info */}
+            {selectedOrganization && (
+              <div className="mt-2 p-2 bg-green-50 rounded border">
+                <div className="font-medium text-green-800">Device Mapping Logic:</div>
+                <div className="text-green-600">
+                  Looking for devices with organizationId: {selectedOrganization.id}
+                </div>
+                {selectedGym ? (
+                  <div className="text-green-600">
+                    AND gymId: {selectedGym.id} (specific gym assignment)
+                  </div>
+                ) : (
+                  <div className="text-green-600">
+                    AND gymId: null/empty (organization-level devices)
+                  </div>
+                )}
+                <div className="text-green-600">
+                  AND deviceType: "camera"
+                </div>
+                
+                {devices.length > 0 && (
+                  <div className="mt-2">
+                    <div className="font-medium text-green-800">Devices Found:</div>
+                    {devices.slice(0, 3).map(device => (
+                      <div key={device.id} className="text-xs text-green-600">
+                        • {device.deviceName} (orgId: {device.organizationId}, gymId: {device.gymId || 'null'})
+                      </div>
+                    ))}
+                    {devices.length > 3 && (
+                      <div className="text-xs text-green-600">
+                        ... and {devices.length - 3} more devices
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -685,4 +1217,3 @@ function Layouts() {
 }
 
 export default Layouts;
-    
