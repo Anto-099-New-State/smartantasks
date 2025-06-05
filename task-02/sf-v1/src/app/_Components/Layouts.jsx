@@ -29,17 +29,18 @@ function Layouts() {
   const [organizations, setOrganizations] = useState([]);
   const [gyms, setGyms] = useState([]);
   const [devices, setDevices] = useState([]);
+  const [customLayouts, setCustomLayouts] = useState([]);
   
   // Loading states
   const [isLoadingOrgs, setIsLoadingOrgs] = useState(false);
   const [isLoadingGyms, setIsLoadingGyms] = useState(false);
   const [isLoadingDevices, setIsLoadingDevices] = useState(false);
-  
+  const [isLoadingCustomLayouts, setIsLoadingCustomLayouts] = useState(false);
+    
   // Hotspot and camera states
   const [hotspots, setHotspots] = useState([]);
   const [activeHotspot, setActiveHotspot] = useState(null);
   
-  // ✅ NEW: Load existing layouts for selected organization/gym
   const [savedLayouts, setSavedLayouts] = useState([]);
   const [isLoadingLayouts, setIsLoadingLayouts] = useState(false);
   
@@ -47,8 +48,13 @@ function Layouts() {
   const [showCameraSelector, setShowCameraSelector] = useState(false);
   const [pendingHotspot, setPendingHotspot] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadForm,setUploadForm] = useState([]);
   
-  // ✅ NEW: Fetch saved layouts from Firestore
+ 
+  
+  //NEW: Fetch saved layouts from Firestore
   const fetchSavedLayouts = async (organizationId, gymId = null) => {
     if (!organizationId) {
       setSavedLayouts([]);
@@ -84,16 +90,16 @@ function Layouts() {
     }
   };
 
-  // ✅ NEW: Load custom layouts when organization/gym changes
+  //NEW: Load custom layouts when organization/gym changes
   useEffect(() => {
     if (selectedOrganization) {
-      fetchCustomLayouts(selectedOrganization.id, selectedGym?.id || null);
+      fetchSavedLayouts(selectedOrganization.id, selectedGym?.id || null);
     } else {
       setCustomLayouts([]);
     }
   }, [selectedOrganization, selectedGym]);
 
-  // ✅ NEW: Load hotspots from a saved layout
+  //NEW: Load hotspots from a saved layout
   const loadSavedLayout = (savedLayout) => {
     if (savedLayout.hotspots && savedLayout.hotspots.length > 0) {
       // Find the matching layout
@@ -114,7 +120,7 @@ function Layouts() {
     { id: 4, name: 'Outdoor Area', image: '/layouts/outdoor.jpg' }
   ]);
 
-  // Fetch organizations from Firestore
+  //Fetch organizations from Firestore
   const fetchOrganizations = async () => {
     setIsLoadingOrgs(true);
     try {
@@ -139,7 +145,7 @@ function Layouts() {
     }
   };
 
-  // ✅ FIXED: Fetch gyms from subcollection for selected organization
+  //FIXED: Fetch gyms from subcollection for selected organization
   const fetchGyms = async (organizationId) => {
     if (!organizationId) {
       setGyms([]);
@@ -148,7 +154,7 @@ function Layouts() {
 
     setIsLoadingGyms(true);
     try {
-      // ✅ Query the subcollection instead of separate collection
+      //Query the subcollection instead of separate collection
       const gymsRef = collection(db, 'organizations', organizationId, 'gyms');
       const q = query(gymsRef, orderBy('name'));
       const querySnapshot = await getDocs(q);
@@ -171,7 +177,7 @@ function Layouts() {
     }
   };
 
-  // ✅ ENHANCED: Fetch devices with proper gym and organization mapping
+  // ENHANCED: Fetch devices with proper gym and organization mapping
   const fetchDevices = async (organizationId, gymId = null) => {
     if (!organizationId) {
       setDevices([]);
@@ -183,7 +189,7 @@ function Layouts() {
       let devicesData = [];
       
       if (gymId) {
-        // ✅ Fetch devices specifically assigned to this gym
+        //Fetch devices specifically assigned to this gym
         console.log(`Fetching devices for gym: ${gymId} in organization: ${organizationId}`);
         
         const gymDevicesQuery = query(
@@ -202,10 +208,10 @@ function Layouts() {
         console.log(`Found ${devicesData.length} devices assigned to gym ${gymId}`);
         
       } else {
-        // ✅ Fetch devices at organization level (no specific gym assignment)
+        //Fetch devices at organization level (no specific gym assignment)
         console.log(`Fetching organization-level devices for: ${organizationId}`);
         
-        // Query for devices that belong to organization but have no gym assignment
+        //Query for devices that belong to organization but have no gym assignment
         const orgDevicesQuery = query(
           collection(db, 'devices'),
           where('organizationId', '==', organizationId),
@@ -216,7 +222,7 @@ function Layouts() {
         orgSnapshot.forEach((doc) => {
           const deviceData = { id: doc.id, ...doc.data() };
           
-          // ✅ Only include devices that don't have a gymId (organization-level devices)
+          //Only include devices that don't have a gymId (organization-level devices)
           if (!deviceData.gymId || deviceData.gymId === null || deviceData.gymId === '') {
             devicesData.push(deviceData);
           }
@@ -225,7 +231,7 @@ function Layouts() {
         console.log(`Found ${devicesData.length} organization-level devices`);
       }
       
-      // ✅ Sort devices by name for consistent display
+      //Sort devices by name for consistent display
       devicesData.sort((a, b) => {
         const nameA = a.deviceName || '';
         const nameB = b.deviceName || '';
@@ -243,12 +249,12 @@ function Layouts() {
     }
   };
 
-  // Fetch organizations on component mount
+  //Fetch organizations on component mount
   useEffect(() => {
     fetchOrganizations();
   }, []);
 
-  // ✅ FIXED: Fetch gyms when organization is selected
+  //FIXED: Fetch gyms when organization is selected
   useEffect(() => {
     if (selectedOrganization) {
       fetchGyms(selectedOrganization.id);
@@ -257,7 +263,7 @@ function Layouts() {
     }
   }, [selectedOrganization]);
 
-  // Fetch devices when organization or gym changes
+  //Fetch devices when organization or gym changes
   useEffect(() => {
     if (selectedOrganization) {
       fetchDevices(selectedOrganization.id, selectedGym?.id || null);
@@ -284,7 +290,7 @@ function Layouts() {
     setHotspots([]);
   }, [selectedLayout]);
 
-  // ✅ ENHANCED: Get available cameras with better filtering and status info
+  //ENHANCED: Get available cameras with better filtering and status info
   const getAvailableCameras = () => {
     return devices.filter(device => {
       // Only show cameras that are available for placement
@@ -292,7 +298,7 @@ function Layouts() {
                          device.status === 'Assigned' || 
                          device.status === 'Active';
       
-      // ✅ Additional check: make sure device matches current selection context
+      //Additional check: make sure device matches current selection context
       const matchesContext = selectedGym 
         ? device.gymId === selectedGym.id 
         : (!device.gymId || device.gymId === null);
@@ -326,7 +332,7 @@ function Layouts() {
     setShowCameraSelector(true);
   };
 
-  // ✅ ENHANCED: Handle camera selection for hotspot with better data structure
+  // ENHANCED: Handle camera selection for hotspot with better data structure
   const handleCameraSelect = (camera) => {
     if (pendingHotspot) {
       const newHotspot = {
@@ -334,14 +340,14 @@ function Layouts() {
         x: pendingHotspot.x,
         y: pendingHotspot.y,
         camera: camera,
-        // ✅ Store proper IDs and names
+        // Store proper IDs and names
         organizationId: selectedOrganization.id,
         organizationName: selectedOrganization.name,
         gymId: selectedGym?.id || null,
         gymName: selectedGym?.name || 'Organization Level',
         layoutId: selectedLayout.id,
         layoutName: selectedLayout.name,
-        // ✅ Additional metadata for better tracking
+        // Additional metadata for better tracking
         createdAt: new Date().toISOString(),
         cameraId: camera.id,
         cameraName: camera.deviceName
@@ -362,7 +368,7 @@ function Layouts() {
     setActiveHotspot(null);
   };
 
-  // ✅ IMPLEMENTED: Save hotspots to Firestore
+  //IMPLEMENTED: Save hotspots to Firestore
   const saveHotspotsToFirestore = async () => {
     if (!selectedOrganization || !selectedLayout || hotspots.length === 0) {
       console.warn('Cannot save: Missing organization, layout, or no hotspots');
@@ -373,12 +379,12 @@ function Layouts() {
     try {
       console.log('Saving hotspots to Firestore:', hotspots);
       
-      // ✅ Save to different paths based on selection context
+      //Save to different paths based on selection context
       const basePath = selectedGym 
         ? `organizations/${selectedOrganization.id}/gyms/${selectedGym.id}/layouts`
         : `organizations/${selectedOrganization.id}/layouts`;
       
-      // ✅ Create layout document with metadata and hotspots
+      //Create layout document with metadata and hotspots
       const layoutData = {
         layoutId: selectedLayout.id,
         layoutName: selectedLayout.name,
@@ -407,15 +413,15 @@ function Layouts() {
         }))
       };
       
-      // ✅ Save layout to Firestore
+      //Save layout to Firestore
       const layoutRef = collection(db, basePath);
       const layoutDocRef = await addDoc(layoutRef, layoutData);
       
       console.log('Layout saved successfully with ID:', layoutDocRef.id);
       alert(`Layout saved successfully! ${hotspots.length} cameras placed in ${selectedLayout.name}`);
       
-      // ✅ Optional: Clear hotspots after successful save
-      // setHotspots([]);
+      //Optional: Clear hotspots after successful save
+      //setHotspots([]);
       
     } catch (error) {
       console.error('Error saving layout to Firestore:', error);
@@ -426,7 +432,7 @@ function Layouts() {
   const filteredCameras = getFilteredCameras();
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-6 max-w-7xl mx-auto overflow-y-scroll">
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold mb-2">Camera Layout Management</h1>
@@ -792,7 +798,7 @@ function Layouts() {
             <img
               src="/floorImg.jpg" // Fallback image, replace with selectedLayout.image when available
               alt={selectedLayout.name}
-              className="w-full h-96 object-cover cursor-crosshair"
+              className="w-full h-full object-cover cursor-crosshair"
               onClick={handleImageClick}
             />
             
