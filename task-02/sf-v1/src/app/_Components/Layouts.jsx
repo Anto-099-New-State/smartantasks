@@ -36,11 +36,12 @@ function Layouts() {
   const [isLoadingGyms, setIsLoadingGyms] = useState(false);
   const [isLoadingDevices, setIsLoadingDevices] = useState(false);
   const [isLoadingCustomLayouts, setIsLoadingCustomLayouts] = useState(false);
-    
+  
   // Hotspot and camera states
   const [hotspots, setHotspots] = useState([]);
   const [activeHotspot, setActiveHotspot] = useState(null);
   
+  // Saved layouts states
   const [savedLayouts, setSavedLayouts] = useState([]);
   const [isLoadingLayouts, setIsLoadingLayouts] = useState(false);
   
@@ -50,11 +51,183 @@ function Layouts() {
   const [searchTerm, setSearchTerm] = useState('');
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadForm,setUploadForm] = useState([]);
-  
- 
-  
-  //NEW: Fetch saved layouts from Firestore
+
+  // ✅ FIXED: Complete upload form state
+  const [uploadForm, setUploadForm] = useState({
+    name: '',
+    description: '',
+    file: null,
+    filePreview: null
+  });
+
+  // Static layouts for now (can be made dynamic later)
+  const [layouts] = useState([
+    { id: 1, name: 'Main Floor', image: '/layouts/main-floor.jpg', type: 'predefined' },
+    { id: 2, name: 'Upper Level', image: '/layouts/upper-level.jpg', type: 'predefined' },
+    { id: 3, name: 'Basement', image: '/layouts/basement.jpg', type: 'predefined' },
+    { id: 4, name: 'Outdoor Area', image: '/layouts/outdoor.jpg', type: 'predefined' }
+  ]);
+
+  // Fetch organizations from Firestore
+  const fetchOrganizations = async () => {
+    setIsLoadingOrgs(true);
+    try {
+      const q = query(collection(db, 'organizations'), orderBy('name'));
+      const querySnapshot = await getDocs(q);
+      const orgsData = [];
+      
+      querySnapshot.forEach((doc) => {
+        orgsData.push({
+          id: doc.id,
+          ...doc.data()
+        });
+      });
+      
+      setOrganizations(orgsData);
+      console.log('Organizations loaded:', orgsData);
+    } catch (error) {
+      console.error('Error fetching organizations:', error);
+      setOrganizations([]);
+    } finally {
+      setIsLoadingOrgs(false);
+    }
+  };
+
+  // Fetch gyms from subcollection for selected organization
+  const fetchGyms = async (organizationId) => {
+    if (!organizationId) {
+      setGyms([]);
+      return;
+    }
+
+    setIsLoadingGyms(true);
+    try {
+      const gymsRef = collection(db, 'organizations', organizationId, 'gyms');
+      const q = query(gymsRef, orderBy('name'));
+      const querySnapshot = await getDocs(q);
+      const gymsData = [];
+      
+      querySnapshot.forEach((doc) => {
+        gymsData.push({
+          id: doc.id,
+          ...doc.data()
+        });
+      });
+      
+      setGyms(gymsData);
+      console.log('Gyms loaded for org:', organizationId, gymsData);
+    } catch (error) {
+      console.error('Error fetching gyms from subcollection:', error);
+      setGyms([]);
+    } finally {
+      setIsLoadingGyms(false);
+    }
+  };
+
+  // ✅ NEW: Fetch custom layouts from Firestore
+  const fetchCustomLayouts = async (organizationId, gymId = null) => {
+    if (!organizationId) {
+      setCustomLayouts([]);
+      return;
+    }
+
+    setIsLoadingCustomLayouts(true);
+    try {
+      const basePath = gymId 
+        ? `organizations/${organizationId}/gyms/${gymId}/customLayouts`
+        : `organizations/${organizationId}/customLayouts`;
+      
+      const layoutsRef = collection(db, basePath);
+      const q = query(layoutsRef, orderBy('createdAt', 'desc'));
+      const querySnapshot = await getDocs(q);
+      
+      const layoutsData = [];
+      querySnapshot.forEach((doc) => {
+        layoutsData.push({
+          id: doc.id,
+          ...doc.data(),
+          type: 'custom'
+        });
+      });
+      
+      setCustomLayouts(layoutsData);
+      console.log('Custom layouts loaded:', layoutsData);
+      
+    } catch (error) {
+      console.error('Error fetching custom layouts:', error);
+      setCustomLayouts([]);
+    } finally {
+      setIsLoadingCustomLayouts(false);
+    }
+  };
+
+  // Fetch devices with proper gym and organization mapping
+  const fetchDevices = async (organizationId, gymId = null) => {
+    if (!organizationId) {
+      setDevices([]);
+      return;
+    }
+
+    setIsLoadingDevices(true);
+    try {
+      let devicesData = [];
+      
+      if (gymId) {
+        console.log(`Fetching devices for gym: ${gymId} in organization: ${organizationId}`);
+        
+        const gymDevicesQuery = query(
+          collection(db, 'devices'),
+          where('organizationId', '==', organizationId),
+          where('gymId', '==', gymId),
+          where('deviceType', '==', 'camera')
+        );
+        
+        const gymSnapshot = await getDocs(gymDevicesQuery);
+        gymSnapshot.forEach((doc) => {
+          const deviceData = { id: doc.id, ...doc.data() };
+          devicesData.push(deviceData);
+        });
+        
+        console.log(`Found ${devicesData.length} devices assigned to gym ${gymId}`);
+      } else {
+        console.log(`Fetching organization-level devices for: ${organizationId}`);
+        
+        const orgDevicesQuery = query(
+          collection(db, 'devices'),
+          where('organizationId', '==', organizationId),
+          where('deviceType', '==', 'camera')
+        );
+        
+        const orgSnapshot = await getDocs(orgDevicesQuery);
+        orgSnapshot.forEach((doc) => {
+          const deviceData = { id: doc.id, ...doc.data() };
+          
+          if (!deviceData.gymId || deviceData.gymId === null || deviceData.gymId === '') {
+            devicesData.push(deviceData);
+          }
+        });
+        
+        console.log(`Found ${devicesData.length} organization-level devices`);
+      }
+      
+      devicesData.sort((a, b) => {
+        const nameA = a.deviceName || '';
+        const nameB = b.deviceName || '';
+        return nameA.localeCompare(nameB);
+      });
+      
+      setDevices(devicesData);
+      console.log('Final devices loaded:', devicesData);
+      
+    } catch (error) {
+      console.error('Error fetching devices:', error);
+      setDevices([]);
+    } finally {
+      setIsLoadingDevices(false);
+    }
+  };
+
+  // ✅ NEW: Fetch saved layouts from Firestore
   const fetchSavedLayouts = async (organizationId, gymId = null) => {
     if (!organizationId) {
       setSavedLayouts([]);
@@ -90,19 +263,220 @@ function Layouts() {
     }
   };
 
-  //NEW: Load custom layouts when organization/gym changes
-  useEffect(() => {
-    if (selectedOrganization) {
-      fetchSavedLayouts(selectedOrganization.id, selectedGym?.id || null);
-    } else {
-      setCustomLayouts([]);
-    }
-  }, [selectedOrganization, selectedGym]);
+  // ✅ NEW: Handle file selection with preview
+  const handleFileSelect = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
 
-  //NEW: Load hotspots from a saved layout
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+      alert('Please upload a valid image file (JPEG, PNG, GIF, or WebP)');
+      return;
+    }
+
+    // Validate file size (max 10MB)
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      alert('File size must be less than 10MB');
+      return;
+    }
+
+    // Create preview
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setUploadForm(prev => ({
+        ...prev,
+        file: file,
+        filePreview: e.target.result
+      }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleLayoutUploadBase64 = async () => {
+    if (!uploadForm.file || !uploadForm.name.trim()) {
+      alert('Please provide a name and select an image file');
+      return;
+    }
+
+    if (!selectedOrganization) {
+      alert('Please select an organization first');
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      console.log('Starting base64 upload process...');
+      console.log('File details:', {
+        name: uploadForm.file.name,
+        size: uploadForm.file.size,
+        type: uploadForm.file.type
+      });
+      
+      const layoutId = `layout_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      console.log('Generated layout ID:', layoutId);
+      
+      // Convert file to base64
+      console.log('Converting file to base64...');
+      const reader = new FileReader();
+      const base64Promise = new Promise((resolve, reject) => {
+        reader.onload = () => {
+          console.log('File read successfully, base64 length:', reader.result.length);
+          resolve(reader.result);
+        };
+        reader.onerror = (error) => {
+          console.error('FileReader error:', error);
+          reject(error);
+        };
+        reader.readAsDataURL(uploadForm.file);
+      });
+      
+      const base64Image = await base64Promise;
+      console.log('Base64 conversion completed');
+      
+      // Check base64 size (Firestore has 1MB document limit)
+      const base64SizeInMB = (base64Image.length * 0.75) / 1024 / 1024; // Approximate size
+      console.log('Base64 size (approximate):', base64SizeInMB.toFixed(2), 'MB');
+      
+      if (base64SizeInMB > 0.8) { // Leave some room for other fields
+        alert(`Image is too large (${base64SizeInMB.toFixed(2)}MB). Please use an image smaller than 800KB for base64 storage.`);
+        return;
+      }
+      
+      const layoutMetadata = {
+        id: layoutId,
+        name: uploadForm.name.trim(),
+        description: uploadForm.description.trim() || '',
+        imageURL: base64Image, // Store base64 directly
+        organizationId: selectedOrganization.id,
+        organizationName: selectedOrganization.name,
+        gymId: selectedGym?.id || null,
+        gymName: selectedGym?.name || 'Organization Level',
+        fileName: uploadForm.file.name,
+        fileSize: uploadForm.file.size,
+        fileType: uploadForm.file.type,
+        storagePath: 'base64', // Indicate this is base64 storage
+        createdAt: new Date().toISOString(),
+        createdBy: 'current_user'
+      };
+      
+      console.log('Prepared layout metadata:', {
+        ...layoutMetadata,
+        imageURL: `${base64Image.substring(0, 50)}...` // Log truncated base64 for readability
+      });
+      
+      console.log('Saving layout with base64 image to Firestore...');
+      
+      const firestorePath = selectedGym 
+        ? `organizations/${selectedOrganization.id}/gyms/${selectedGym.id}/customLayouts`
+        : `organizations/${selectedOrganization.id}/customLayouts`;
+      
+      console.log('Firestore path:', firestorePath);
+      
+      // Check if db is available
+      if (!db) {
+        throw new Error('Firestore database is not initialized');
+      }
+      
+      const layoutDocRef = doc(collection(db, firestorePath), layoutId);
+      console.log('Document reference created, saving...');
+      
+      await setDoc(layoutDocRef, layoutMetadata);
+      console.log('Document saved successfully to Firestore');
+      
+      console.log('Layout uploaded successfully with base64:', layoutId);
+      
+      // Refresh custom layouts
+      console.log('Refreshing custom layouts...');
+      await fetchCustomLayouts(selectedOrganization.id, selectedGym?.id || null);
+      
+      // Reset form and close modal
+      setUploadForm({
+        name: '',
+        description: '',
+        file: null,
+        filePreview: null
+      });
+      setShowUploadModal(false);
+      
+      alert('Layout uploaded successfully using base64 storage!');
+      
+    } catch (error) {
+      console.error('Detailed error uploading layout with base64:', {
+        message: error.message,
+        code: error.code,
+        stack: error.stack,
+        error: error
+      });
+      
+      // More specific error messages
+      let errorMessage = 'Error uploading layout: ';
+      
+      if (error.message.includes('Missing or insufficient permissions')) {
+        errorMessage += 'You do not have permission to write to Firestore. Please check Firestore rules.';
+      } else if (error.message.includes('Maximum document size')) {
+        errorMessage += 'The image is too large for Firestore. Please use a smaller image (under 800KB).';
+      } else if (error.message.includes('network')) {
+        errorMessage += 'Network error. Please check your internet connection.';
+      } else if (error.message.includes('not initialized')) {
+        errorMessage += 'Database connection error. Please refresh the page and try again.';
+      } else {
+        errorMessage += error.message || 'Unknown error occurred. Please try again.';
+      }
+      
+      alert(errorMessage);
+    } finally {
+      setIsUploading(false);
+      console.log('Upload process completed');
+    }
+  };
+
+  // ✅ UPDATED: Delete custom layout (handles both Storage and base64)
+  const deleteCustomLayout = async (layout) => {
+    if (!confirm(`Are you sure you want to delete "${layout.name}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      // Only try to delete from Firebase Storage if it's not base64 storage
+      if (layout.storagePath && layout.storagePath !== 'base64' && storage) {
+        try {
+          const imageRef = ref(storage, `${layout.storagePath}/image`);
+          await deleteObject(imageRef);
+          console.log('Deleted from Firebase Storage');
+        } catch (storageError) {
+          console.warn('Could not delete from Firebase Storage (might be base64):', storageError);
+          // Continue anyway - just delete from Firestore
+        }
+      }
+      
+      // Delete from Firestore
+      const firestorePath = selectedGym 
+        ? `organizations/${selectedOrganization.id}/gyms/${selectedGym.id}/customLayouts`
+        : `organizations/${selectedOrganization.id}/customLayouts`;
+      
+      await deleteDoc(doc(db, firestorePath, layout.id));
+      console.log('Deleted from Firestore');
+      
+      await fetchCustomLayouts(selectedOrganization.id, selectedGym?.id || null);
+      
+      if (selectedLayout?.id === layout.id) {
+        setSelectedLayout(null);
+        setHotspots([]);
+      }
+      
+      console.log('Layout deleted successfully:', layout.name);
+      
+    } catch (error) {
+      console.error('Error deleting layout:', error);
+      alert('Error deleting layout. Please try again.');
+    }
+  };
+
+  // Load hotspots from a saved layout
   const loadSavedLayout = (savedLayout) => {
     if (savedLayout.hotspots && savedLayout.hotspots.length > 0) {
-      // Find the matching layout
       const layout = layouts.find(l => l.id === savedLayout.layoutId);
       if (layout) {
         setSelectedLayout(layout);
@@ -112,193 +486,13 @@ function Layouts() {
     }
   };
 
-  // Static layouts for now (can be made dynamic later)
-  const [layouts] = useState([
-    { id: 1, name: 'Main Floor', image: '/layouts/main-floor.jpg' },
-    { id: 2, name: 'Upper Level', image: '/layouts/upper-level.jpg' },
-    { id: 3, name: 'Basement', image: '/layouts/basement.jpg' },
-    { id: 4, name: 'Outdoor Area', image: '/layouts/outdoor.jpg' }
-  ]);
-
-  //Fetch organizations from Firestore
-  const fetchOrganizations = async () => {
-    setIsLoadingOrgs(true);
-    try {
-      const q = query(collection(db, 'organizations'), orderBy('name'));
-      const querySnapshot = await getDocs(q);
-      const orgsData = [];
-      
-      querySnapshot.forEach((doc) => {
-        orgsData.push({
-          id: doc.id,
-          ...doc.data()
-        });
-      });
-      
-      setOrganizations(orgsData);
-      console.log('Organizations loaded:', orgsData);
-    } catch (error) {
-      console.error('Error fetching organizations:', error);
-      setOrganizations([]);
-    } finally {
-      setIsLoadingOrgs(false);
-    }
-  };
-
-  //FIXED: Fetch gyms from subcollection for selected organization
-  const fetchGyms = async (organizationId) => {
-    if (!organizationId) {
-      setGyms([]);
-      return;
-    }
-
-    setIsLoadingGyms(true);
-    try {
-      //Query the subcollection instead of separate collection
-      const gymsRef = collection(db, 'organizations', organizationId, 'gyms');
-      const q = query(gymsRef, orderBy('name'));
-      const querySnapshot = await getDocs(q);
-      const gymsData = [];
-      
-      querySnapshot.forEach((doc) => {
-        gymsData.push({
-          id: doc.id,
-          ...doc.data()
-        });
-      });
-      
-      setGyms(gymsData);
-      console.log('Gyms loaded for org:', organizationId, gymsData);
-    } catch (error) {
-      console.error('Error fetching gyms from subcollection:', error);
-      setGyms([]);
-    } finally {
-      setIsLoadingGyms(false);
-    }
-  };
-
-  // ENHANCED: Fetch devices with proper gym and organization mapping
-  const fetchDevices = async (organizationId, gymId = null) => {
-    if (!organizationId) {
-      setDevices([]);
-      return;
-    }
-
-    setIsLoadingDevices(true);
-    try {
-      let devicesData = [];
-      
-      if (gymId) {
-        //Fetch devices specifically assigned to this gym
-        console.log(`Fetching devices for gym: ${gymId} in organization: ${organizationId}`);
-        
-        const gymDevicesQuery = query(
-          collection(db, 'devices'),
-          where('organizationId', '==', organizationId),
-          where('gymId', '==', gymId),
-          where('deviceType', '==', 'camera')
-        );
-        
-        const gymSnapshot = await getDocs(gymDevicesQuery);
-        gymSnapshot.forEach((doc) => {
-          const deviceData = { id: doc.id, ...doc.data() };
-          devicesData.push(deviceData);
-        });
-        
-        console.log(`Found ${devicesData.length} devices assigned to gym ${gymId}`);
-        
-      } else {
-        //Fetch devices at organization level (no specific gym assignment)
-        console.log(`Fetching organization-level devices for: ${organizationId}`);
-        
-        //Query for devices that belong to organization but have no gym assignment
-        const orgDevicesQuery = query(
-          collection(db, 'devices'),
-          where('organizationId', '==', organizationId),
-          where('deviceType', '==', 'camera')
-        );
-        
-        const orgSnapshot = await getDocs(orgDevicesQuery);
-        orgSnapshot.forEach((doc) => {
-          const deviceData = { id: doc.id, ...doc.data() };
-          
-          //Only include devices that don't have a gymId (organization-level devices)
-          if (!deviceData.gymId || deviceData.gymId === null || deviceData.gymId === '') {
-            devicesData.push(deviceData);
-          }
-        });
-        
-        console.log(`Found ${devicesData.length} organization-level devices`);
-      }
-      
-      //Sort devices by name for consistent display
-      devicesData.sort((a, b) => {
-        const nameA = a.deviceName || '';
-        const nameB = b.deviceName || '';
-        return nameA.localeCompare(nameB);
-      });
-      
-      setDevices(devicesData);
-      console.log('Final devices loaded:', devicesData);
-      
-    } catch (error) {
-      console.error('Error fetching devices:', error);
-      setDevices([]);
-    } finally {
-      setIsLoadingDevices(false);
-    }
-  };
-
-  //Fetch organizations on component mount
-  useEffect(() => {
-    fetchOrganizations();
-  }, []);
-
-  //FIXED: Fetch gyms when organization is selected
-  useEffect(() => {
-    if (selectedOrganization) {
-      fetchGyms(selectedOrganization.id);
-    } else {
-      setGyms([]);
-    }
-  }, [selectedOrganization]);
-
-  //Fetch devices when organization or gym changes
-  useEffect(() => {
-    if (selectedOrganization) {
-      fetchDevices(selectedOrganization.id, selectedGym?.id || null);
-    } else {
-      setDevices([]);
-    }
-  }, [selectedOrganization, selectedGym]);
-
-  // Reset selections when organization changes
-  useEffect(() => {
-    setSelectedGym(null);
-    setSelectedLayout(null);
-    setHotspots([]);
-  }, [selectedOrganization]);
-
-  // Reset layout and hotspots when gym changes
-  useEffect(() => {
-    setSelectedLayout(null);
-    setHotspots([]);
-  }, [selectedGym]);
-
-  // Reset hotspots when layout changes
-  useEffect(() => {
-    setHotspots([]);
-  }, [selectedLayout]);
-
-  //ENHANCED: Get available cameras with better filtering and status info
+  // Get available cameras with better filtering and status info
   const getAvailableCameras = () => {
     return devices.filter(device => {
-      // Only show cameras that are available for placement
       const isAvailable = device.status === 'Inventory' || 
                          device.status === 'Assigned' || 
                          device.status === 'Active';
       
-      //Additional check: make sure device matches current selection context
       const matchesContext = selectedGym 
         ? device.gymId === selectedGym.id 
         : (!device.gymId || device.gymId === null);
@@ -332,7 +526,7 @@ function Layouts() {
     setShowCameraSelector(true);
   };
 
-  // ENHANCED: Handle camera selection for hotspot with better data structure
+  // Handle camera selection for hotspot with better data structure
   const handleCameraSelect = (camera) => {
     if (pendingHotspot) {
       const newHotspot = {
@@ -340,14 +534,12 @@ function Layouts() {
         x: pendingHotspot.x,
         y: pendingHotspot.y,
         camera: camera,
-        // Store proper IDs and names
         organizationId: selectedOrganization.id,
         organizationName: selectedOrganization.name,
         gymId: selectedGym?.id || null,
         gymName: selectedGym?.name || 'Organization Level',
         layoutId: selectedLayout.id,
         layoutName: selectedLayout.name,
-        // Additional metadata for better tracking
         createdAt: new Date().toISOString(),
         cameraId: camera.id,
         cameraName: camera.deviceName
@@ -368,7 +560,7 @@ function Layouts() {
     setActiveHotspot(null);
   };
 
-  //IMPLEMENTED: Save hotspots to Firestore
+  // Save hotspots to Firestore
   const saveHotspotsToFirestore = async () => {
     if (!selectedOrganization || !selectedLayout || hotspots.length === 0) {
       console.warn('Cannot save: Missing organization, layout, or no hotspots');
@@ -379,12 +571,10 @@ function Layouts() {
     try {
       console.log('Saving hotspots to Firestore:', hotspots);
       
-      //Save to different paths based on selection context
       const basePath = selectedGym 
         ? `organizations/${selectedOrganization.id}/gyms/${selectedGym.id}/layouts`
         : `organizations/${selectedOrganization.id}/layouts`;
       
-      //Create layout document with metadata and hotspots
       const layoutData = {
         layoutId: selectedLayout.id,
         layoutName: selectedLayout.name,
@@ -413,21 +603,59 @@ function Layouts() {
         }))
       };
       
-      //Save layout to Firestore
       const layoutRef = collection(db, basePath);
       const layoutDocRef = await addDoc(layoutRef, layoutData);
       
       console.log('Layout saved successfully with ID:', layoutDocRef.id);
       alert(`Layout saved successfully! ${hotspots.length} cameras placed in ${selectedLayout.name}`);
       
-      //Optional: Clear hotspots after successful save
-      //setHotspots([]);
-      
     } catch (error) {
       console.error('Error saving layout to Firestore:', error);
       alert('Error saving layout. Please try again.');
     }
   };
+
+  // UseEffects
+  useEffect(() => {
+    fetchOrganizations();
+  }, []);
+
+  useEffect(() => {
+    if (selectedOrganization) {
+      fetchGyms(selectedOrganization.id);
+      fetchCustomLayouts(selectedOrganization.id, selectedGym?.id || null);
+      fetchSavedLayouts(selectedOrganization.id, selectedGym?.id || null);
+    } else {
+      setGyms([]);
+      setCustomLayouts([]);
+      setSavedLayouts([]);
+    }
+  }, [selectedOrganization]);
+
+  useEffect(() => {
+    if (selectedOrganization) {
+      fetchDevices(selectedOrganization.id, selectedGym?.id || null);
+      fetchCustomLayouts(selectedOrganization.id, selectedGym?.id || null);
+      fetchSavedLayouts(selectedOrganization.id, selectedGym?.id || null);
+    } else {
+      setDevices([]);
+    }
+  }, [selectedOrganization, selectedGym]);
+
+  useEffect(() => {
+    setSelectedGym(null);
+    setSelectedLayout(null);
+    setHotspots([]);
+  }, [selectedOrganization]);
+
+  useEffect(() => {
+    setSelectedLayout(null);
+    setHotspots([]);
+  }, [selectedGym]);
+
+  useEffect(() => {
+    setHotspots([]);
+  }, [selectedLayout]);
 
   const filteredCameras = getFilteredCameras();
 
@@ -510,7 +738,6 @@ function Layouts() {
               </div>
             ) : (
               <div className="space-y-2 max-h-60 overflow-y-auto">
-                {/* Organization Level Option */}
                 <button
                   onClick={() => setSelectedGym(null)}
                   className={`w-full text-left p-3 rounded border transition-colors ${
@@ -523,7 +750,6 @@ function Layouts() {
                   <div className="text-sm text-gray-500">General organization layout</div>
                 </button>
                 
-                {/* Individual Gyms from Subcollection */}
                 {gyms.length > 0 ? (
                   gyms.map((gym) => (
                     <button
@@ -577,7 +803,6 @@ function Layouts() {
           
           {selectedOrganization ? (
             <>
-              {/* Upload Layout Button */}
               <div className="mb-4">
                 <button
                   onClick={() => setShowUploadModal(true)}
@@ -589,7 +814,6 @@ function Layouts() {
               </div>
 
               <div className="space-y-2 max-h-60 overflow-y-auto">
-                {/* Predefined Layouts */}
                 <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
                   Predefined Layouts
                 </div>
@@ -608,7 +832,6 @@ function Layouts() {
                   </button>
                 ))}
 
-                {/* Custom Layouts */}
                 {customLayouts.length > 0 && (
                   <>
                     <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2 mt-4 flex items-center gap-2">
@@ -643,7 +866,6 @@ function Layouts() {
                           </div>
                         </button>
                         
-                        {/* Delete Button */}
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -659,7 +881,6 @@ function Layouts() {
                   </>
                 )}
 
-                {/* Loading State for Custom Layouts */}
                 {isLoadingCustomLayouts && customLayouts.length === 0 && (
                   <div className="flex items-center justify-center py-4">
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
@@ -716,7 +937,6 @@ function Layouts() {
             )}
           </div>
           
-          {/* ✅ NEW: Save button and saved layouts display */}
           {hotspots.length > 0 && (
             <div className="mt-3 flex gap-2">
               <button
@@ -734,7 +954,6 @@ function Layouts() {
             </div>
           )}
           
-          {/* ✅ NEW: Show saved layouts */}
           {savedLayouts.length > 0 && (
             <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded">
               <h5 className="font-medium text-green-800 mb-2">
@@ -793,16 +1012,17 @@ function Layouts() {
             </div>
           </div>
           
-          {/* Layout Image with Hotspots */}
           <div className="relative">
             <img
-              src="/floorImg.jpg" // Fallback image, replace with selectedLayout.image when available
+              src={selectedLayout.image || "/floorImg.jpg"}
               alt={selectedLayout.name}
-              className="w-full h-full object-cover cursor-crosshair"
+              className="w-full h-96 object-cover cursor-crosshair"
               onClick={handleImageClick}
+              onError={(e) => {
+                e.target.src = "/floorImg.jpg";
+              }}
             />
             
-            {/* Camera Hotspots */}
             {hotspots.map((spot) => (
               <div
                 key={spot.id}
@@ -822,7 +1042,6 @@ function Layouts() {
               </div>
             ))}
             
-            {/* Pending Hotspot Preview */}
             {pendingHotspot && (
               <div
                 className="absolute w-6 h-6 bg-yellow-500 border-2 border-white rounded-full animate-pulse"
@@ -835,6 +1054,10 @@ function Layouts() {
                 <span className="text-white text-xs">?</span>
               </div>
             )}
+
+            <div className="absolute top-2 left-2 px-2 py-1 bg-black bg-opacity-50 text-white text-xs rounded">
+              {selectedLayout.type === 'custom' ? '🖼️ Custom' : '📐 Predefined'}
+            </div>
           </div>
         </div>
       ) : selectedOrganization ? (
@@ -875,7 +1098,6 @@ function Layouts() {
             </div>
 
             <div className="space-y-4">
-              {/* Context Info */}
               <div className="p-3 bg-blue-50 rounded border border-blue-200">
                 <div className="text-sm text-blue-800">
                   <strong>Uploading to:</strong> {selectedOrganization?.name}
@@ -883,7 +1105,6 @@ function Layouts() {
                 </div>
               </div>
 
-              {/* Layout Name */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Layout Name *
@@ -899,7 +1120,6 @@ function Layouts() {
                 />
               </div>
 
-              {/* Description */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Description (Optional)
@@ -915,7 +1135,6 @@ function Layouts() {
                 />
               </div>
 
-              {/* File Upload */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Layout Image *
@@ -970,7 +1189,6 @@ function Layouts() {
                 )}
               </div>
 
-              {/* File Requirements */}
               <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded">
                 <strong>Requirements:</strong><br />
                 • Supported formats: JPEG, PNG, GIF, WebP<br />
@@ -978,16 +1196,19 @@ function Layouts() {
                 • Recommended: High resolution floor plans or blueprints
               </div>
 
-              {/* Upload Button */}
               <button
-                onClick={handleLayoutUpload}
+                onClick={() => {
+                  // Use base64 method - it's free and avoids CORS issues
+                  console.log('Using base64 upload method (free storage)');
+                  handleLayoutUploadBase64();
+                }}
                 disabled={isUploading || !uploadForm.file || !uploadForm.name.trim()}
                 className="w-full bg-blue-600 text-white py-3 rounded hover:bg-blue-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isUploading ? (
                   <div className="flex items-center justify-center gap-2">
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    Uploading to Firebase...
+                    Uploading layout...
                   </div>
                 ) : (
                   'Upload Layout'
@@ -1016,7 +1237,6 @@ function Layouts() {
               </button>
             </div>
             
-            {/* Camera Selection Info */}
             <div className="mb-4 p-3 bg-blue-50 rounded border border-blue-200">
               <div className="text-sm text-blue-800">
                 <strong>Location:</strong> {selectedOrganization?.name}
@@ -1027,7 +1247,6 @@ function Layouts() {
               </div>
             </div>
             
-            {/* Search */}
             <div className="mb-4">
               <input
                 type="text"
@@ -1038,7 +1257,6 @@ function Layouts() {
               />
             </div>
             
-            {/* Loading State */}
             {isLoadingDevices && (
               <div className="flex items-center justify-center py-8">
                 <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
@@ -1046,7 +1264,6 @@ function Layouts() {
               </div>
             )}
             
-            {/* Camera List */}
             {!isLoadingDevices && (
               <div className="flex-1 overflow-y-auto space-y-2">
                 {filteredCameras.length > 0 ? (
@@ -1139,82 +1356,6 @@ function Layouts() {
             >
               Remove
             </button>
-          </div>
-        </div>
-      )}
-
-      {/* Debug Info Panel (can be removed in production) */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="mt-6 p-4 bg-gray-100 rounded-lg border">
-          <h4 className="font-medium text-gray-800 mb-2">Debug Info</h4>
-          <div className="text-xs text-gray-600 space-y-1">
-            <div>Organizations loaded: {organizations.length}</div>
-            <div>Gyms loaded (from subcollection): {gyms.length}</div>
-            <div>Devices loaded: {devices.length}</div>
-            <div>Available cameras: {filteredCameras.length}</div>
-            <div>Selected Org ID: {selectedOrganization?.id || 'None'}</div>
-            <div>Selected Gym ID: {selectedGym?.id || 'None'}</div>
-            <div>Selected Layout: {selectedLayout?.name || 'None'}</div>
-            <div>Hotspots placed: {hotspots.length}</div>
-            <div>Firebase Structure: organizations/{selectedOrganization?.id || 'orgId'}/gyms/{selectedGym?.id || 'gymId'}</div>
-            
-            {/* Show gym structure info */}
-            {selectedOrganization && (
-              <div className="mt-2 p-2 bg-blue-50 rounded border">
-                <div className="font-medium text-blue-800">Subcollection Query:</div>
-                <div className="text-blue-600">
-                  collection(db, 'organizations', '{selectedOrganization.id}', 'gyms')
-                </div>
-                {gyms.length > 0 && (
-                  <div className="mt-1">
-                    <div className="text-blue-800">Gyms found:</div>
-                    {gyms.map(gym => (
-                      <div key={gym.id} className="text-blue-600">
-                        • {gym.name} (ID: {gym.id})
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-            
-            {/* Show device mapping info */}
-            {selectedOrganization && (
-              <div className="mt-2 p-2 bg-green-50 rounded border">
-                <div className="font-medium text-green-800">Device Mapping Logic:</div>
-                <div className="text-green-600">
-                  Looking for devices with organizationId: {selectedOrganization.id}
-                </div>
-                {selectedGym ? (
-                  <div className="text-green-600">
-                    AND gymId: {selectedGym.id} (specific gym assignment)
-                  </div>
-                ) : (
-                  <div className="text-green-600">
-                    AND gymId: null/empty (organization-level devices)
-                  </div>
-                )}
-                <div className="text-green-600">
-                  AND deviceType: "camera"
-                </div>
-                
-                {devices.length > 0 && (
-                  <div className="mt-2">
-                    <div className="font-medium text-green-800">Devices Found:</div>
-                    {devices.slice(0, 3).map(device => (
-                      <div key={device.id} className="text-xs text-green-600">
-                        • {device.deviceName} (orgId: {device.organizationId}, gymId: {device.gymId || 'null'})
-                      </div>
-                    ))}
-                    {devices.length > 3 && (
-                      <div className="text-xs text-green-600">
-                        ... and {devices.length - 3} more devices
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </div>
       )}
