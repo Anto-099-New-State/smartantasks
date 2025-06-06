@@ -1,6 +1,5 @@
 import Image from "next/image";
-import Design from "./_Components/Design";
-import LandingPage from "./_Components/LandingPage";
+import LandingPage from "./_components/LandingPage";
 
 export default function Home() {
   return (
@@ -13,7 +12,7 @@ export default function Home() {
 
       <div className="flex-grow">
         <LandingPage />
-      </div>sf-v1/src/app/auth-verf
+      </div>
 
       <div className="text-white text-sm text-center">
         © 2025 Your Company. All rights reserved.
