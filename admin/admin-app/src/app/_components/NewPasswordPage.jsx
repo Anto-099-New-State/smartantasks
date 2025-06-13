@@ -5,14 +5,14 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { ArrowBigLeft } from 'lucide-react';
 import { confirmPasswordReset } from 'firebase/auth';
 import { auth } from '../api/firebase';
-import LoadingOverlay from './LoadingOverlay'; // ✅ Import
+import LoadingOverlay from './LoadingOverlay'; 
 
 const NewPasswordPage = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [loading, setLoading] = useState(false); // ✅ loading state
+  const [loading, setLoading] = useState(false);
 
   const params = useSearchParams();
   const router = useRouter();

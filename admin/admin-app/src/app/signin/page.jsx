@@ -1,5 +1,5 @@
 import React from 'react'
-import Design from '../_Components/Design'
+import Design from '../_components/Design'
 
 function page() {
   return (

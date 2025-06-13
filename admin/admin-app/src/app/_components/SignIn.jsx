@@ -20,7 +20,7 @@ function SignInForm() {
   useEffect((
    onAuthStateChanged(auth, (user) =>{
     if(user){
-      router.push('dashboard');
+      router.push('my-gym');
     }
     else{
       console.log("no active session");
@@ -41,7 +41,7 @@ function SignInForm() {
         credentials: 'include',
       body: JSON.stringify({ idToken }),
     });
-      router.push('/dashboard');
+      router.push('/my-gym');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -60,7 +60,7 @@ function SignInForm() {
          credentials: 'include',
         body: JSON.stringify({idToken}),
       });
-      router.push('/dashboard');
+      router.push('/my-gym');
     } catch (err) {
       setError(err.message);
       toast.error(err.message);

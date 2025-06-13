@@ -8,7 +8,7 @@ import Link from 'next/link';
 import { createUserWithEmailAndPassword, sendEmailVerification, signInWithPopup } from 'firebase/auth';
 import { auth, googleProvider } from '../api/firebase';
 import { useRouter } from 'next/navigation';
-import LoadingOverlay from './LoadingOverlay'; //import loading
+import LoadingOverlay from './LoadingOverlay'; 
 import { toast } from 'react-hot-toast';
 
 const SignUpForm = () => {
@@ -21,7 +21,7 @@ const SignUpForm = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [loading, setLoading] = useState(false); //loading state
+  const [loading, setLoading] = useState(false); 
  
   const handleSignUp = async (e) => {
     e.preventDefault();
@@ -52,7 +52,7 @@ const SignUpForm = () => {
     setLoading(true); //start loading
     try {
       const result = await signInWithPopup(auth, googleProvider);
-      router.push('/dashboard');
+      router.push('/my-gym');
     } catch (err) {
       setError(err.message);
       toast.error(err.message);
