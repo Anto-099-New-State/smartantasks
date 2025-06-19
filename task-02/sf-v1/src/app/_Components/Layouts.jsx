@@ -987,8 +987,8 @@ function Layouts() {
 
       {/* Layout Display */}
       {selectedLayout ? (
-        <div className="bg-white rounded-lg shadow border">
-          <div className="p-4 border-b">
+        <div className="bg-white rounded-lg shadow border overflow-visible">
+          <div className="p-4 border-b overflow-auto">
             <div className="flex justify-between items-center">
               <h3 className="font-semibold text-lg">
                 {selectedLayout.name} - Camera Placement

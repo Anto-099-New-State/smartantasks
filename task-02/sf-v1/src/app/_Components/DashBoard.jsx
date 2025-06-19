@@ -218,7 +218,17 @@ const Dashboard = () => {
     }
   };
 
-  // Modal handlers (removed organization CRUD)
+  // Modal handlers for Organizations
+  const handleOpenCreateModal = () => {
+    setEditingUser(null);
+    setIsModalOpen(true);
+  };
+
+  const handleOpenEditModal = (user) => {
+    setEditingUser(user);
+    setIsModalOpen(true);
+  };
+
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setEditingUser(null);
@@ -388,11 +398,21 @@ const Dashboard = () => {
       case 'Organization':
         return (
           <>
-            <Header 
-              title="Organizations" 
-              count={users.length} 
-              isLoading={isLoadingOrgs}
-            />
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <div>
+                <h1 className="text-2xl font-bold">Organizations</h1>
+                <span className="bg-gray-600 text-white px-2 py-1 rounded text-xs">
+                  {isLoadingOrgs ? 'Loading...' : `${users.length} total`}
+                </span>
+              </div>
+              <button
+                onClick={handleOpenCreateModal}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
+              >
+                <span className="text-lg">+</span>
+                Create Organization
+              </button>
+            </div>
             
             {isLoadingOrgs ? (
               <div className="flex items-center justify-center py-12">
@@ -404,7 +424,8 @@ const Dashboard = () => {
                 data={users}
                 searchTerm={searchTerm}
                 setSearchTerm={setSearchTerm}
-                readOnly={true}
+                readOnly={false}
+                onEdit={handleOpenEditModal}
               />
             )}
           </>
@@ -447,6 +468,13 @@ const Dashboard = () => {
         {/* Render the active content */}
         {renderActiveContent()}
       </div>
+
+      {/* Organization Modal */}
+      <OrganizationModal
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        initialData={editingUser}
+      />
     </div>
   );
 };

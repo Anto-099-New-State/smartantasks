@@ -42,11 +42,11 @@ const GymManagementDashboard = () => {
   };
 
   const params = useParams();
-    const id = params.slug;
+  const id = params.slug;
   
-    console.log(id);
+  console.log(id);
 
-  // Initial gym form state
+  // Initial gym form state with coordinates added
   const initialGymState = {
     name: '',
     address: '',
@@ -58,7 +58,9 @@ const GymManagementDashboard = () => {
     status: 'ACTIVE',
     openingTime: '',
     closingTime: '',
-    amenities: []
+    amenities: [],
+    latitude: '',
+    longitude: ''
   };
 
   const [gymForm, setGymForm] = useState(initialGymState);
@@ -149,6 +151,8 @@ const GymManagementDashboard = () => {
       const docRef = await addDoc(gymsRef, {
         ...gymData,
         capacity: parseInt(gymData.capacity),
+        latitude: gymData.latitude ? parseFloat(gymData.latitude) : null,
+        longitude: gymData.longitude ? parseFloat(gymData.longitude) : null,
         members: 0,
         monthlyRevenue: 0,
         createdBy: user.uid,
@@ -186,6 +190,8 @@ const GymManagementDashboard = () => {
       await updateDoc(gymRef, {
         ...gymData,
         capacity: parseInt(gymData.capacity),
+        latitude: gymData.latitude ? parseFloat(gymData.latitude) : null,
+        longitude: gymData.longitude ? parseFloat(gymData.longitude) : null,
         updatedBy: user.uid,
         updatedAt: serverTimestamp()
       });
@@ -253,7 +259,9 @@ const GymManagementDashboard = () => {
       status: gym.status,
       openingTime: gym.openingTime,
       closingTime: gym.closingTime,
-      amenities: gym.amenities
+      amenities: gym.amenities,
+      latitude: gym.latitude ? gym.latitude.toString() : '',
+      longitude: gym.longitude ? gym.longitude.toString() : ''
     });
     setShowEditModal(true);
   };
@@ -555,6 +563,34 @@ const GymManagementDashboard = () => {
                             required
                             value={gymForm.email}
                             onChange={(e) => setGymForm({...gymForm, email: e.target.value})}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Latitude
+                          </label>
+                          <input
+                            type="number"
+                            step="any"
+                            value={gymForm.latitude}
+                            onChange={(e) => setGymForm({...gymForm, latitude: e.target.value})}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Longitude
+                          </label>
+                          <input
+                            type="number"
+                            step="any"
+                            value={gymForm.longitude}
+                            onChange={(e) => setGymForm({...gymForm, longitude: e.target.value})}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                           />
                         </div>
