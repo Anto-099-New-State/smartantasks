@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 DB_CONFIG = {
     'host': 'localhost',
     'user': 'root',
-    'password': 'root',  # Change to your password
+    'password': 'root',
     'database': 'vision_data'
 }
 
