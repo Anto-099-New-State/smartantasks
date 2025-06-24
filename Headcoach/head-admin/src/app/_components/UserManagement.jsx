@@ -1,4 +1,4 @@
-// UserManagement.js - Simple and Clean Version using 'users' subcollection
+// UserManagement.js - Enhanced with better readability and filtering
 "use client"
 import { useState, useEffect } from 'react';
 import { 
@@ -18,6 +18,8 @@ const UserManagement = ({ organizationId, userGyms }) => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedGym, setSelectedGym] = useState('all');
+  const [selectedStatus, setSelectedStatus] = useState('all'); // New filter
+  const [selectedMembership, setSelectedMembership] = useState('all'); // New filter
   const [showModal, setShowModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
@@ -59,7 +61,8 @@ const UserManagement = ({ organizationId, userGyms }) => {
             id: doc.id,
             ...doc.data(),
             gymId: gym.id,
-            gymName: gym.name
+            gymName: gym.name,
+            type: 'user' // Add type for consistency
           });
         });
       }
@@ -232,88 +235,118 @@ const UserManagement = ({ organizationId, userGyms }) => {
     return trainer ? trainer.name : 'Unassigned';
   };
 
-  // Filter users
+  // Enhanced filter function
   const filteredUsers = users.filter(user => {
     const matchesSearch = user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          user.email?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesGym = selectedGym === 'all' || user.gymId === selectedGym;
-    return matchesSearch && matchesGym;
+    const matchesStatus = selectedStatus === 'all' || user.status === selectedStatus;
+    const matchesMembership = selectedMembership === 'all' || user.membershipType === selectedMembership;
+    return matchesSearch && matchesGym && matchesStatus && matchesMembership;
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 p-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
-          <p className="text-gray-600">Manage gym members and their account permissions here</p>
+          <h1 className="text-3xl font-bold text-slate-900">User Management</h1>
+          <p className="text-slate-700 mt-1 font-semibold">Manage gym members and their account permissions here</p>
         </div>
         <button
           onClick={openAddModal}
-          className="bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-800"
+          className="bg-slate-900 text-white px-6 py-3 rounded-lg hover:bg-slate-800 font-semibold transition-colors"
         >
           Add User
         </button>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white rounded-lg border p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-900">
-            All Users <span className="text-gray-400">{filteredUsers.length}</span>
+      {/* Enhanced Filters */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-xl font-bold text-slate-900">
+            All Users <span className="text-slate-600 font-semibold">{filteredUsers.length}</span>
           </h3>
-          <div className="flex space-x-3">
+          <div className="flex space-x-4">
             <input
               type="text"
               placeholder="Search users..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="px-4 py-2 border rounded-lg w-64 text-gray-700"
+              className="px-4 py-2 border border-slate-300 rounded-lg w-64 text-slate-800 font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
             />
             <select
               value={selectedGym}
               onChange={(e) => setSelectedGym(e.target.value)}
-              className="border rounded-lg px-3 py-2 text-gray-700"
+              className="border border-slate-300 rounded-lg px-4 py-2 text-slate-800 font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
             >
               <option value="all">All Gyms</option>
               {userGyms.map((gym) => (
                 <option key={gym.id} value={gym.id}>{gym.name}</option>
               ))}
             </select>
+            <select
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value)}
+              className="border border-slate-300 rounded-lg px-4 py-2 text-slate-800 font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+            >
+              <option value="all">All Status</option>
+              <option value="active">Active Only</option>
+              <option value="inactive">Inactive Only</option>
+              <option value="suspended">Suspended Only</option>
+            </select>
+            <select
+              value={selectedMembership}
+              onChange={(e) => setSelectedMembership(e.target.value)}
+              className="border border-slate-300 rounded-lg px-4 py-2 text-slate-800 font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+            >
+              <option value="all">All Memberships</option>
+              <option value="basic">Basic Only</option>
+              <option value="premium">Premium Only</option>
+              <option value="vip">VIP Only</option>
+            </select>
           </div>
         </div>
 
-        {/* Table */}
-        <div className="overflow-x-auto bg-white rounded-lg border-2 border-gray-300">
+        {/* Enhanced Table */}
+        <div className="overflow-x-auto bg-white rounded-lg border-2 border-slate-300">
           <table className="min-w-full">
-            <thead className="bg-gray-100 border-b-2 border-gray-300">
+            <thead className="bg-slate-100 border-b-2 border-slate-300">
               <tr>
-                <th className="text-left py-4 px-6 font-bold text-black border-r border-gray-300">User</th>
-                <th className="text-left py-4 px-6 font-bold text-black border-r border-gray-300">Status</th>
-                <th className="text-left py-4 px-6 font-bold text-black border-r border-gray-300">Trainer</th>
-                <th className="text-left py-4 px-6 font-bold text-black border-r border-gray-300">Membership</th>
-                <th className="text-left py-4 px-6 font-bold text-black border-r border-gray-300">Gym</th>
-                <th className="text-left py-4 px-6 font-bold text-black">Actions</th>
+                <th className="text-left py-4 px-6 font-bold text-slate-800 border-r border-slate-300 text-sm uppercase tracking-wider">User</th>
+                <th className="text-left py-4 px-6 font-bold text-slate-800 border-r border-slate-300 text-sm uppercase tracking-wider">Status</th>
+                <th className="text-left py-4 px-6 font-bold text-slate-800 border-r border-slate-300 text-sm uppercase tracking-wider">Trainer</th>
+                <th className="text-left py-4 px-6 font-bold text-slate-800 border-r border-slate-300 text-sm uppercase tracking-wider">Membership</th>
+                <th className="text-left py-4 px-6 font-bold text-slate-800 border-r border-slate-300 text-sm uppercase tracking-wider">Gym</th>
+                <th className="text-left py-4 px-6 font-bold text-slate-800 text-sm uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="6" className="text-center py-12 text-black font-medium">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500 mx-auto mb-2"></div>
-                    Loading users...
+                  <td colSpan="6" className="text-center py-12">
+                    <div className="flex flex-col items-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500 mb-4"></div>
+                      <p className="text-slate-700 font-semibold">Loading users...</p>
+                    </div>
                   </td>
                 </tr>
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="text-center py-12 text-black font-medium">
-                    No users found
+                  <td colSpan="6" className="text-center py-12">
+                    <div className="flex flex-col items-center">
+                      <svg className="w-12 h-12 text-slate-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+                      </svg>
+                      <p className="text-slate-700 font-semibold">No users found</p>
+                      <p className="text-slate-600 text-sm font-medium">Try adjusting your filters or add new users</p>
+                    </div>
                   </td>
                 </tr>
               ) : (
                 filteredUsers.map((user, index) => (
-                  <tr key={user.id} className={`border-b-2 border-gray-200 hover:bg-gray-50 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-25'}`}>
-                    <td className="py-4 px-6 border-r border-gray-200">
+                  <tr key={user.id} className={`border-b-2 border-slate-200 hover:bg-slate-50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-slate-25'}`}>
+                    <td className="py-4 px-6 border-r border-slate-200">
                       <div className="flex items-center space-x-3">
                         <div className="w-10 h-10 bg-purple-500 rounded-full flex items-center justify-center">
                           <span className="text-white font-bold text-sm">
@@ -321,13 +354,13 @@ const UserManagement = ({ organizationId, userGyms }) => {
                           </span>
                         </div>
                         <div>
-                          <div className="font-bold text-black text-base">{user.name}</div>
-                          <div className="text-sm text-gray-600 font-medium">{user.email}</div>
-                          <div className="text-xs text-gray-500">{user.phone} • Age: {user.age}</div>
+                          <div className="font-bold text-slate-900 text-base">{user.name}</div>
+                          <div className="text-sm text-slate-700 font-semibold">{user.email}</div>
+                          <div className="text-xs text-slate-600 font-medium">{user.phone} • Age: {user.age}</div>
                         </div>
                       </div>
                     </td>
-                    <td className="py-4 px-6 border-r border-gray-200">
+                    <td className="py-4 px-6 border-r border-slate-200">
                       <span className={`px-3 py-2 rounded-full text-sm font-bold ${
                         user.status === 'active' 
                           ? 'bg-green-200 text-green-800 border border-green-400' 
@@ -338,46 +371,46 @@ const UserManagement = ({ organizationId, userGyms }) => {
                         {user.status === 'active' ? 'Active' : user.status === 'suspended' ? 'Suspended' : 'Inactive'}
                       </span>
                     </td>
-                    <td className="py-4 px-6 border-r border-gray-200">
+                    <td className="py-4 px-6 border-r border-slate-200">
                       {user.assignedTrainer ? (
-                        <span className="text-emerald-600 font-medium">{getTrainerName(user.assignedTrainer)}</span>
+                        <span className="text-emerald-600 font-bold">{getTrainerName(user.assignedTrainer)}</span>
                       ) : (
-                        <span className="text-gray-400 font-medium">Unassigned</span>
+                        <span className="text-slate-500 font-semibold">Unassigned</span>
                       )}
                     </td>
-                    <td className="py-4 px-6 border-r border-gray-200">
-                      <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                    <td className="py-4 px-6 border-r border-slate-200">
+                      <span className={`px-3 py-1 rounded-full text-xs font-bold ${
                         user.membershipType === 'vip' 
-                          ? 'bg-yellow-200 text-yellow-800' 
+                          ? 'bg-yellow-200 text-yellow-800 border border-yellow-400' 
                           : user.membershipType === 'premium'
-                          ? 'bg-blue-200 text-blue-800'
-                          : 'bg-gray-200 text-gray-800'
+                          ? 'bg-blue-200 text-blue-800 border border-blue-400'
+                          : 'bg-gray-200 text-gray-800 border border-gray-400'
                       }`}>
                         {user.membershipType?.toUpperCase() || 'BASIC'}
                       </span>
                     </td>
-                    <td className="py-4 px-6 border-r border-gray-200">
-                      <span className="text-black font-medium">{user.gymName}</span>
-                      <div className="text-xs text-gray-500">{user.gender}</div>
+                    <td className="py-4 px-6 border-r border-slate-200">
+                      <span className="text-slate-800 font-bold">{user.gymName}</span>
+                      <div className="text-xs text-slate-600 font-medium">{user.gender}</div>
                     </td>
                     <td className="py-4 px-6">
                       <div className="flex space-x-2">
                         <button
                           onClick={() => openAssignModal(user)}
-                          className="bg-purple-500 text-white px-3 py-2 rounded-lg hover:bg-purple-600 font-medium text-sm transition-colors"
+                          className="bg-purple-500 text-white px-3 py-2 rounded-lg hover:bg-purple-600 font-semibold text-sm transition-colors"
                           title="Assign Trainer"
                         >
                           Trainer
                         </button>
                         <button
                           onClick={() => openEditModal(user)}
-                          className="bg-blue-500 text-white px-3 py-2 rounded-lg hover:bg-blue-600 font-medium text-sm transition-colors"
+                          className="bg-blue-500 text-white px-3 py-2 rounded-lg hover:bg-blue-600 font-semibold text-sm transition-colors"
                         >
                           Edit
                         </button>
                         <button
                           onClick={() => handleDelete(user)}
-                          className="bg-red-500 text-white px-3 py-2 rounded-lg hover:bg-red-600 font-medium text-sm transition-colors"
+                          className="bg-red-500 text-white px-3 py-2 rounded-lg hover:bg-red-600 font-semibold text-sm transition-colors"
                         >
                           Delete
                         </button>
@@ -391,15 +424,15 @@ const UserManagement = ({ organizationId, userGyms }) => {
         </div>
       </div>
 
-      {/* User Form Modal */}
+      {/* Enhanced User Form Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-black">
+          <div className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-xl">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-slate-900">
                 {editingUser ? 'Edit User' : 'Add New User'}
               </h3>
-              <button onClick={closeModal} className="text-gray-400 hover:text-gray-600">
+              <button onClick={closeModal} className="text-slate-400 hover:text-slate-600">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -409,23 +442,23 @@ const UserManagement = ({ organizationId, userGyms }) => {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-bold text-black mb-1">Name *</label>
+                  <label className="block text-sm font-bold text-slate-800 mb-2">Name *</label>
                   <input
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full p-3 border-2 border-gray-400 rounded-lg text-black bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    className="w-full p-3 border-2 border-slate-300 rounded-lg text-slate-800 bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                     placeholder="Enter full name"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-bold text-black mb-1">Age *</label>
+                  <label className="block text-sm font-bold text-slate-800 mb-2">Age *</label>
                   <input
                     type="number"
                     value={age}
                     onChange={(e) => setAge(e.target.value)}
-                    className="w-full p-3 border-2 border-gray-400 rounded-lg text-black bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    className="w-full p-3 border-2 border-slate-300 rounded-lg text-slate-800 bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                     placeholder="Age"
                     min="16"
                     max="100"
@@ -435,12 +468,12 @@ const UserManagement = ({ organizationId, userGyms }) => {
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-black mb-1">Email *</label>
+                <label className="block text-sm font-bold text-slate-800 mb-2">Email *</label>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full p-3 border-2 border-gray-400 rounded-lg text-black bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  className="w-full p-3 border-2 border-slate-300 rounded-lg text-slate-800 bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                   placeholder="Enter email address"
                   required
                 />
@@ -448,85 +481,85 @@ const UserManagement = ({ organizationId, userGyms }) => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-bold text-black mb-1">Phone *</label>
+                  <label className="block text-sm font-bold text-slate-800 mb-2">Phone *</label>
                   <input
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    className="w-full p-3 border-2 border-gray-400 rounded-lg text-black bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    className="w-full p-3 border-2 border-slate-300 rounded-lg text-slate-800 bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                     placeholder="Phone number"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-bold text-black mb-1">Gender *</label>
+                  <label className="block text-sm font-bold text-slate-800 mb-2">Gender *</label>
                   <select
                     value={gender}
                     onChange={(e) => setGender(e.target.value)}
-                    className="w-full p-3 border-2 border-gray-400 rounded-lg text-black bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    className="w-full p-3 border-2 border-slate-300 rounded-lg text-slate-800 bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                     required
                   >
-                    <option value="" className="text-black">Select Gender</option>
-                    <option value="male" className="text-black">Male</option>
-                    <option value="female" className="text-black">Female</option>
-                    <option value="other" className="text-black">Other</option>
+                    <option value="" className="text-slate-800">Select Gender</option>
+                    <option value="male" className="text-slate-800">Male</option>
+                    <option value="female" className="text-slate-800">Female</option>
+                    <option value="other" className="text-slate-800">Other</option>
                   </select>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-bold text-black mb-1">Gym *</label>
+                  <label className="block text-sm font-bold text-slate-800 mb-2">Gym *</label>
                   <select
                     value={gymId}
                     onChange={(e) => setGymId(e.target.value)}
-                    className="w-full p-3 border-2 border-gray-400 rounded-lg text-black bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    className="w-full p-3 border-2 border-slate-300 rounded-lg text-slate-800 bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                     required
                   >
-                    <option value="" className="text-black">Select a gym</option>
+                    <option value="" className="text-slate-800">Select a gym</option>
                     {userGyms.map((gym) => (
-                      <option key={gym.id} value={gym.id} className="text-black">{gym.name}</option>
+                      <option key={gym.id} value={gym.id} className="text-slate-800">{gym.name}</option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-bold text-black mb-1">Membership Type</label>
+                  <label className="block text-sm font-bold text-slate-800 mb-2">Membership Type</label>
                   <select
                     value={membershipType}
                     onChange={(e) => setMembershipType(e.target.value)}
-                    className="w-full p-3 border-2 border-gray-400 rounded-lg text-black bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    className="w-full p-3 border-2 border-slate-300 rounded-lg text-slate-800 bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                   >
-                    <option value="basic" className="text-black">Basic</option>
-                    <option value="premium" className="text-black">Premium</option>
-                    <option value="vip" className="text-black">VIP</option>
+                    <option value="basic" className="text-slate-800">Basic</option>
+                    <option value="premium" className="text-slate-800">Premium</option>
+                    <option value="vip" className="text-slate-800">VIP</option>
                   </select>
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-black mb-1">Emergency Contact *</label>
+                <label className="block text-sm font-bold text-slate-800 mb-2">Emergency Contact *</label>
                 <input
                   type="text"
                   value={emergencyContact}
                   onChange={(e) => setEmergencyContact(e.target.value)}
-                  className="w-full p-3 border-2 border-gray-400 rounded-lg text-black bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  className="w-full p-3 border-2 border-slate-300 rounded-lg text-slate-800 bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                   placeholder="Emergency contact name and phone"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-black mb-1">Assigned Trainer</label>
+                <label className="block text-sm font-bold text-slate-800 mb-2">Assigned Trainer</label>
                 <select
                   value={assignedTrainer}
                   onChange={(e) => setAssignedTrainer(e.target.value)}
-                  className="w-full p-3 border-2 border-gray-400 rounded-lg text-black bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  className="w-full p-3 border-2 border-slate-300 rounded-lg text-slate-800 bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 >
-                  <option value="" className="text-black">No trainer assigned</option>
+                  <option value="" className="text-slate-800">No trainer assigned</option>
                   {trainers
                     .filter(trainer => gymId === '' || trainer.gymId === gymId)
                     .map((trainer) => (
-                      <option key={trainer.id} value={trainer.id} className="text-black">
+                      <option key={trainer.id} value={trainer.id} className="text-slate-800">
                         {trainer.name} - {trainer.specialization}
                       </option>
                     ))}
@@ -534,51 +567,51 @@ const UserManagement = ({ organizationId, userGyms }) => {
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-black mb-1">Medical Conditions</label>
+                <label className="block text-sm font-bold text-slate-800 mb-2">Medical Conditions</label>
                 <textarea
                   value={medicalConditions}
                   onChange={(e) => setMedicalConditions(e.target.value)}
-                  className="w-full p-3 border-2 border-gray-400 rounded-lg text-black bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  className="w-full p-3 border-2 border-slate-300 rounded-lg text-slate-800 bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                   rows="2"
                   placeholder="Any medical conditions or allergies"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-black mb-1">Fitness Goals</label>
+                <label className="block text-sm font-bold text-slate-800 mb-2">Fitness Goals</label>
                 <textarea
                   value={fitnessGoals}
                   onChange={(e) => setFitnessGoals(e.target.value)}
-                  className="w-full p-3 border-2 border-gray-400 rounded-lg text-black bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  className="w-full p-3 border-2 border-slate-300 rounded-lg text-slate-800 bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                   rows="2"
                   placeholder="What are their fitness goals?"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-black mb-1">Status</label>
+                <label className="block text-sm font-bold text-slate-800 mb-2">Status</label>
                 <select
                   value={status}
                   onChange={(e) => setStatus(e.target.value)}
-                  className="w-full p-3 border-2 border-gray-400 rounded-lg text-black bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  className="w-full p-3 border-2 border-slate-300 rounded-lg text-slate-800 bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 >
-                  <option value="active" className="text-black">Active</option>
-                  <option value="inactive" className="text-black">Inactive</option>
-                  <option value="suspended" className="text-black">Suspended</option>
+                  <option value="active" className="text-slate-800">Active</option>
+                  <option value="inactive" className="text-slate-800">Inactive</option>
+                  <option value="suspended" className="text-slate-800">Suspended</option>
                 </select>
               </div>
 
-              <div className="flex space-x-3 pt-4">
+              <div className="flex space-x-3 pt-6">
                 <button
                   type="submit"
-                  className="flex-1 bg-emerald-500 text-white py-3 px-4 rounded-lg hover:bg-emerald-600 font-bold"
+                  className="flex-1 bg-emerald-500 text-white py-3 px-4 rounded-lg hover:bg-emerald-600 font-bold transition-colors"
                 >
                   {editingUser ? 'Update' : 'Add'} User
                 </button>
                 <button
                   type="button"
                   onClick={closeModal}
-                  className="flex-1 bg-gray-500 text-white py-3 px-4 rounded-lg hover:bg-gray-600 font-bold"
+                  className="flex-1 bg-slate-500 text-white py-3 px-4 rounded-lg hover:bg-slate-600 font-bold transition-colors"
                 >
                   Cancel
                 </button>
@@ -588,13 +621,13 @@ const UserManagement = ({ organizationId, userGyms }) => {
         </div>
       )}
 
-      {/* Assign Trainer Modal */}
+      {/* Enhanced Assign Trainer Modal */}
       {showAssignModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-black">Assign Trainer</h3>
-              <button onClick={closeModal} className="text-gray-400 hover:text-gray-600">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-slate-900">Assign Trainer</h3>
+              <button onClick={closeModal} className="text-slate-400 hover:text-slate-600">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -602,32 +635,32 @@ const UserManagement = ({ organizationId, userGyms }) => {
             </div>
 
             <div className="space-y-4">
-              <div className="bg-gray-100 p-4 rounded-lg">
-                <h4 className="font-bold text-black">User: {selectedUser?.name}</h4>
-                <p className="text-sm text-gray-600">Gym: {selectedUser?.gymName}</p>
-                <p className="text-sm text-gray-600">
+              <div className="bg-slate-100 p-4 rounded-lg">
+                <h4 className="font-bold text-slate-900">User: {selectedUser?.name}</h4>
+                <p className="text-sm text-slate-700 font-medium">Gym: {selectedUser?.gymName}</p>
+                <p className="text-sm text-slate-700 font-medium">
                   Current Trainer: {selectedUser?.assignedTrainer ? getTrainerName(selectedUser.assignedTrainer) : 'None'}
                 </p>
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-black mb-2">Available Trainers</label>
+                <label className="block text-sm font-bold text-slate-800 mb-2">Available Trainers</label>
                 {trainers.filter(trainer => trainer.gymId === selectedUser?.gymId && trainer.status === 'active').length === 0 ? (
-                  <p className="text-gray-500 text-sm">No active trainers available in this gym</p>
+                  <p className="text-slate-600 text-sm font-medium">No active trainers available in this gym</p>
                 ) : (
                   <div className="space-y-2 max-h-60 overflow-y-auto">
                     {trainers
                       .filter(trainer => trainer.gymId === selectedUser?.gymId && trainer.status === 'active')
                       .map((trainer) => (
-                        <div key={trainer.id} className="flex items-center justify-between p-3 border-2 border-gray-300 rounded-lg hover:bg-gray-50">
+                        <div key={trainer.id} className="flex items-center justify-between p-3 border-2 border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">
                           <div>
-                            <div className="font-bold text-black">{trainer.name}</div>
-                            <div className="text-sm text-gray-600">{trainer.specialization}</div>
-                            <div className="text-xs text-gray-500">{trainer.experience} experience</div>
+                            <div className="font-bold text-slate-900">{trainer.name}</div>
+                            <div className="text-sm text-slate-700 font-medium">{trainer.specialization}</div>
+                            <div className="text-xs text-slate-600 font-medium">{trainer.experience} experience</div>
                           </div>
                           <button
                             onClick={() => handleAssignTrainer(trainer.id)}
-                            className="bg-emerald-500 text-white px-3 py-2 rounded-lg hover:bg-emerald-600 font-bold"
+                            className="bg-emerald-500 text-white px-3 py-2 rounded-lg hover:bg-emerald-600 font-bold transition-colors"
                           >
                             Assign
                           </button>
@@ -638,10 +671,10 @@ const UserManagement = ({ organizationId, userGyms }) => {
               </div>
 
               {selectedUser?.assignedTrainer && (
-                <div className="pt-4 border-t border-gray-200">
+                <div className="pt-4 border-t border-slate-200">
                   <button
                     onClick={() => handleAssignTrainer('')}
-                    className="w-full bg-red-500 text-white py-3 px-4 rounded-lg hover:bg-red-600 font-bold"
+                    className="w-full bg-red-500 text-white py-3 px-4 rounded-lg hover:bg-red-600 font-bold transition-colors"
                   >
                     Remove Current Trainer
                   </button>

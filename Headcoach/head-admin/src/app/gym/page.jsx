@@ -209,7 +209,7 @@ const VerificationPage = () => {
           <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center mr-3">
             <span className="text-white font-bold text-sm">E</span>
           </div>
-          <span className="text-xl font-semibold text-gray-900">Efficio</span>
+          <span className="text-xl font-semibold text-gray-900">{userGyms.map(g => g.name)}</span>
         </div>
 
         {/* User Profile */}
@@ -540,7 +540,8 @@ const VerificationPage = () => {
 
           {activeView === 'attendance' && (
             <div>
-              <AttendanceManagement/>            
+              <AttendanceManagement organizationId={organization?.id}
+              userGyms={userGyms}/>            
             </div>
           )}
 
