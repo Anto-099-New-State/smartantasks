@@ -3,25 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <title>Gym Pulley Rep Counter</title>
-  <style>
-    body { margin: 0; overflow: hidden; font-family: sans-serif; }
-    #ui {
-      position: absolute;
-      top: 10px; left: 10px;
-      color: white;
-      background: rgba(0,0,0,0.5);
-      padding: 100px 150px;
-      border-radius: 10px;
-      font-size: 16px;
-      z-index: 10;
-    }
-  </style>
-</head>
+   
 <body>
-  <div id="ui">
-    🏋️ Reps: <span id="rep">0</span><br>
-    🧱 Sets: <span id="set">0</span>
-  </div>
-  <script type="module" src="./main.js"></script>
+  <div id="bg-animated"></div>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.153.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <script src="https://sql.js.org/dist/sql-wasm.js"></script>
+  <script src="main.js"></script>
+
 </body>
 </html>
