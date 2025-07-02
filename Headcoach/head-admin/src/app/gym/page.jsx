@@ -9,6 +9,7 @@ import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../api/firebase';
 import dynamic from 'next/dynamic';
 import AttendanceManagement from '../_components/AttendanceManagement';
+import HardwareManagement from '../_components/HarwareManagement';
 
 // Dynamic imports for Next.js
 const TrainerManagement = dynamic(() => import('../_components/Trainer'), {
@@ -558,8 +559,15 @@ const VerificationPage = () => {
               userGyms={userGyms}
             />
           )}
-
-          {(activeView === 'floor' || activeView === 'hardware') && (
+          {(activeView === 'hardware') && 
+          
+          (
+            <HardwareManagement 
+            organizationId={organization?.id}
+            userGyms={userGyms}
+            />
+          )}
+          {(activeView === 'floor') && (
             <div className="space-y-6">
               <h2 className="text-2xl font-bold text-gray-900 capitalize">
                 {activeView} Management

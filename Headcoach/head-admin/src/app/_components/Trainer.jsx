@@ -1,4 +1,4 @@
-// TrainerManagement.js - Enhanced with better readability and filtering
+// TrainerManagement.js - Enhanced with User Assignment for Next.js
 "use client"
 import { useState, useEffect } from 'react';
 import { 
@@ -8,18 +8,24 @@ import {
   doc, 
   updateDoc, 
   deleteDoc,
-  serverTimestamp 
+  serverTimestamp,
+  query,
+  where 
 } from 'firebase/firestore';
 import { db } from '../api/firebase';
 
 const TrainerManagement = ({ organizationId, userGyms }) => {
   const [trainers, setTrainers] = useState([]);
+  const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedGym, setSelectedGym] = useState('all');
-  const [selectedStatus, setSelectedStatus] = useState('all'); // New filter
+  const [selectedStatus, setSelectedStatus] = useState('all');
   const [showModal, setShowModal] = useState(false);
+  const [showUsersModal, setShowUsersModal] = useState(false);
+  const [selectedTrainer, setSelectedTrainer] = useState(null);
   const [editingTrainer, setEditingTrainer] = useState(null);
+  const [expandedTrainer, setExpandedTrainer] = useState(null);
 
   // Simple form state
   const [name, setName] = useState('');
@@ -32,10 +38,11 @@ const TrainerManagement = ({ organizationId, userGyms }) => {
   const [bio, setBio] = useState('');
   const [status, setStatus] = useState('active');
 
-  // Load trainers
+  // Load trainers and users
   useEffect(() => {
     if (organizationId) {
       fetchTrainers();
+      fetchUsers();
     }
   }, [organizationId]);
 
@@ -53,16 +60,82 @@ const TrainerManagement = ({ organizationId, userGyms }) => {
             ...doc.data(),
             gymId: gym.id,
             gymName: gym.name,
-            type: 'trainer' // Add type for consistency
+            type: 'trainer'
           });
         });
       }
-      console.log(allTrainers);
       setTrainers(allTrainers);
     } catch (error) {
       console.error('Error fetching trainers:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchUsers = async () => {
+    try {
+      const allUsers = [];
+      
+      for (const gym of userGyms) {
+        const usersRef = collection(db, 'organizations', organizationId, 'gyms', gym.id, 'users');
+        const snapshot = await getDocs(usersRef);
+        snapshot.forEach((doc) => {
+          allUsers.push({
+            id: doc.id,
+            ...doc.data(),
+            gymId: gym.id,
+            gymName: gym.name,
+            type: 'user'
+          });
+        });
+      }
+      setUsers(allUsers);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+    }
+  };
+
+  // Get users assigned to a specific trainer
+  const getUsersForTrainer = (trainerId) => {
+    return users.filter(user => user.assignedTrainer === trainerId);
+  };
+
+  // Get unassigned users in the same gym as trainer
+  const getUnassignedUsers = (gymId) => {
+    return users.filter(user => user.gymId === gymId && !user.assignedTrainer);
+  };
+
+  // Assign user to trainer
+  const assignUserToTrainer = async (userId, trainerId, gymId) => {
+    try {
+      const userRef = doc(db, 'organizations', organizationId, 'gyms', gymId, 'users', userId);
+      await updateDoc(userRef, {
+        assignedTrainer: trainerId,
+        lastEdited: serverTimestamp()
+      });
+      
+      fetchUsers(); // Refresh users list
+      alert('User assigned successfully!');
+    } catch (error) {
+      console.error('Error assigning user:', error);
+      alert('Failed to assign user');
+    }
+  };
+
+  // Remove user from trainer
+  const removeUserFromTrainer = async (userId, gymId) => {
+    try {
+      const userRef = doc(db, 'organizations', organizationId, 'gyms', gymId, 'users', userId);
+      await updateDoc(userRef, {
+        assignedTrainer: '',
+        lastEdited: serverTimestamp()
+      });
+      
+      fetchUsers(); // Refresh users list
+      alert('User removed successfully!');
+    } catch (error) {
+      console.error('Error removing user:', error);
+      alert('Failed to remove user');
     }
   };
 
@@ -98,9 +171,16 @@ const TrainerManagement = ({ organizationId, userGyms }) => {
     setShowModal(true);
   };
 
+  const openUsersModal = (trainer) => {
+    setSelectedTrainer(trainer);
+    setShowUsersModal(true);
+  };
+
   const closeModal = () => {
     setShowModal(false);
+    setShowUsersModal(false);
     resetForm();
+    setSelectedTrainer(null);
   };
 
   const handleSubmit = async (e) => {
@@ -127,12 +207,10 @@ const TrainerManagement = ({ organizationId, userGyms }) => {
 
     try {
       if (editingTrainer) {
-        // Update existing trainer
         const trainerRef = doc(db, 'organizations', organizationId, 'gyms', editingTrainer.gymId, 'trainers', editingTrainer.id);
         await updateDoc(trainerRef, trainerData);
         alert('Trainer updated successfully!');
       } else {
-        // Add new trainer
         const trainersRef = collection(db, 'organizations', organizationId, 'gyms', gymId, 'trainers');
         await addDoc(trainersRef, {
           ...trainerData,
@@ -179,7 +257,7 @@ const TrainerManagement = ({ organizationId, userGyms }) => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Trainer Management</h1>
-          <p className="text-slate-700 mt-1 font-semibold">Manage your team members and their account permissions here</p>
+          <p className="text-slate-700 mt-1 font-semibold">Manage your team members and their assigned users</p>
         </div>
         <button
           onClick={openAddModal}
@@ -233,7 +311,7 @@ const TrainerManagement = ({ organizationId, userGyms }) => {
                 <th className="text-left py-4 px-6 font-bold text-slate-800 text-sm uppercase tracking-wider">Trainer</th>
                 <th className="text-left py-4 px-6 font-bold text-slate-800 text-sm uppercase tracking-wider">Status</th>
                 <th className="text-left py-4 px-6 font-bold text-slate-800 text-sm uppercase tracking-wider">Specialization</th>
-                <th className="text-left py-4 px-6 font-bold text-slate-800 text-sm uppercase tracking-wider">Experience</th>
+                <th className="text-left py-4 px-6 font-bold text-slate-800 text-sm uppercase tracking-wider">Assigned Users</th>
                 <th className="text-left py-4 px-6 font-bold text-slate-800 text-sm uppercase tracking-wider">Gym</th>
                 <th className="text-left py-4 px-6 font-bold text-slate-800 text-sm uppercase tracking-wider">Actions</th>
               </tr>
@@ -261,64 +339,208 @@ const TrainerManagement = ({ organizationId, userGyms }) => {
                   </td>
                 </tr>
               ) : (
-                filteredTrainers.map((trainer) => (
-                  <tr key={trainer.id} className="border-b border-slate-200 hover:bg-slate-50 transition-colors">
-                    <td className="py-4 px-6">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                          <span className="text-blue-800 font-bold text-sm">
-                            {trainer.name?.charAt(0) || 'T'}
+                filteredTrainers.map((trainer) => {
+                  const assignedUsers = getUsersForTrainer(trainer.id);
+                  const isExpanded = expandedTrainer === trainer.id;
+                  
+                  return (
+                    <>
+                      <tr key={trainer.id} className="border-b border-slate-200 hover:bg-slate-50 transition-colors">
+                        <td className="py-4 px-6">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                              <span className="text-blue-800 font-bold text-sm">
+                                {trainer.name?.charAt(0) || 'T'}
+                              </span>
+                            </div>
+                            <div>
+                              <div className="font-bold text-slate-900">{trainer.name}</div>
+                              <div className="text-sm text-slate-700 font-medium">{trainer.email}</div>
+                              <div className="text-xs text-slate-600">{trainer.phone}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-4 px-6">
+                          <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                            trainer.status === 'active' 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {trainer.status || 'Active'}
                           </span>
-                        </div>
-                        <div>
-                          <div className="font-bold text-slate-900">{trainer.name}</div>
-                          <div className="text-sm text-slate-700 font-medium">{trainer.email}</div>
-                          <div className="text-xs text-slate-600">{trainer.phone}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-4 px-6">
-                      <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                        trainer.status === 'active' 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-gray-100 text-gray-800'
-                      }`}>
-                        {trainer.status || 'Active'}
-                      </span>
-                    </td>
-                    <td className="py-4 px-6">
-                      <span className="text-sm text-slate-800 font-semibold">{trainer.specialization}</span>
-                      {trainer.certifications && (
-                        <div className="text-xs text-slate-600 font-medium mt-1">{trainer.certifications}</div>
+                        </td>
+                        <td className="py-4 px-6">
+                          <span className="text-sm text-slate-800 font-semibold">{trainer.specialization}</span>
+                          {trainer.certifications && (
+                            <div className="text-xs text-slate-600 font-medium mt-1">{trainer.certifications}</div>
+                          )}
+                        </td>
+                        <td className="py-4 px-6">
+                          <div className="flex items-center space-x-2">
+                            <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-xs font-bold">
+                              {assignedUsers.length} users
+                            </span>
+                            <button
+                              onClick={() => setExpandedTrainer(isExpanded ? null : trainer.id)}
+                              className="text-blue-600 hover:text-blue-800 text-xs font-semibold"
+                            >
+                              {isExpanded ? 'Hide' : 'View'}
+                            </button>
+                            <button
+                              onClick={() => openUsersModal(trainer)}
+                              className="bg-blue-500 text-white px-2 py-1 rounded text-xs font-semibold hover:bg-blue-600"
+                            >
+                              Manage
+                            </button>
+                          </div>
+                        </td>
+                        <td className="py-4 px-6 text-sm text-slate-800 font-semibold">{trainer.gymName}</td>
+                        <td className="py-4 px-6">
+                          <div className="flex space-x-2">
+                            <button
+                              onClick={() => openEditModal(trainer)}
+                              className="bg-blue-500 text-white px-3 py-2 rounded-lg hover:bg-blue-600 text-sm font-semibold transition-colors"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleDelete(trainer)}
+                              className="bg-red-500 text-white px-3 py-2 rounded-lg hover:bg-red-600 text-sm font-semibold transition-colors"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* Expandable User List */}
+                      {isExpanded && (
+                        <tr>
+                          <td colSpan="6" className="px-6 py-4 bg-slate-50">
+                            <div className="border-l-4 border-blue-500 pl-4">
+                              <h4 className="font-semibold text-slate-800 mb-3">
+                                Assigned Users ({assignedUsers.length})
+                              </h4>
+                              {assignedUsers.length === 0 ? (
+                                <p className="text-slate-600 text-sm">No users assigned to this trainer.</p>
+                              ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                  {assignedUsers.map((user) => (
+                                    <div key={user.id} className="bg-white p-3 rounded-lg border border-slate-200">
+                                      <div className="flex items-center justify-between">
+                                        <div>
+                                          <div className="font-medium text-slate-900">{user.name}</div>
+                                          <div className="text-xs text-slate-600">{user.email}</div>
+                                          <div className="text-xs text-slate-500">{user.membershipType?.toUpperCase()}</div>
+                                        </div>
+                                        <button
+                                          onClick={() => removeUserFromTrainer(user.id, user.gymId)}
+                                          className="text-red-500 hover:text-red-700 text-xs font-semibold"
+                                          title="Remove user"
+                                        >
+                                          ✕
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
                       )}
-                    </td>
-                    <td className="py-4 px-6 text-sm text-slate-800 font-semibold">{trainer.experience}</td>
-                    <td className="py-4 px-6 text-sm text-slate-800 font-semibold">{trainer.gymName}</td>
-                    <td className="py-4 px-6">
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => openEditModal(trainer)}
-                          className="bg-blue-500 text-white px-3 py-2 rounded-lg hover:bg-blue-600 text-sm font-semibold transition-colors"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleDelete(trainer)}
-                          className="bg-red-500 text-white px-3 py-2 rounded-lg hover:bg-red-600 text-sm font-semibold transition-colors"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                    </>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Enhanced Modal */}
+      {/* User Management Modal */}
+      {showUsersModal && selectedTrainer && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-xl">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-slate-900">
+                Manage Users for {selectedTrainer.name}
+              </h3>
+              <button onClick={closeModal} className="text-slate-400 hover:text-slate-600">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Assigned Users */}
+              <div>
+                <h4 className="font-semibold text-slate-800 mb-4">
+                  Assigned Users ({getUsersForTrainer(selectedTrainer.id).length})
+                </h4>
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {getUsersForTrainer(selectedTrainer.id).map((user) => (
+                    <div key={user.id} className="bg-green-50 border border-green-200 p-4 rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="font-medium text-slate-900">{user.name}</div>
+                          <div className="text-sm text-slate-600">{user.email}</div>
+                          <div className="text-xs text-slate-500">
+                            {user.membershipType?.toUpperCase()} • Age: {user.age}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => removeUserFromTrainer(user.id, user.gymId)}
+                          className="bg-red-500 text-white px-3 py-1 rounded text-sm font-semibold hover:bg-red-600"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {getUsersForTrainer(selectedTrainer.id).length === 0 && (
+                    <p className="text-slate-600 text-center py-8">No users assigned yet.</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Available Users */}
+              <div>
+                <h4 className="font-semibold text-slate-800 mb-4">
+                  Available Users ({getUnassignedUsers(selectedTrainer.gymId).length})
+                </h4>
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {getUnassignedUsers(selectedTrainer.gymId).map((user) => (
+                    <div key={user.id} className="bg-slate-50 border border-slate-200 p-4 rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="font-medium text-slate-900">{user.name}</div>
+                          <div className="text-sm text-slate-600">{user.email}</div>
+                          <div className="text-xs text-slate-500">
+                            {user.membershipType?.toUpperCase()} • Age: {user.age}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => assignUserToTrainer(user.id, selectedTrainer.id, user.gymId)}
+                          className="bg-emerald-500 text-white px-3 py-1 rounded text-sm font-semibold hover:bg-emerald-600"
+                        >
+                          Assign
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {getUnassignedUsers(selectedTrainer.gymId).length === 0 && (
+                    <p className="text-slate-600 text-center py-8">All users in this gym are assigned.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add/Edit Trainer Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto shadow-xl">
