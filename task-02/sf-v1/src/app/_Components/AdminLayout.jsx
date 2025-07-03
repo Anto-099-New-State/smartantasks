@@ -102,7 +102,6 @@ const AdminLayout = ({ children, title = 'Admin Panel' }) => {
           </div>
         </div>
 
-        {/* Main content */}
         <div className="lg:pl-64">
           {/* Top navigation */}
           <div className="sticky top-0 z-10 bg-white border-b border-gray-200">
@@ -143,7 +142,6 @@ const AdminLayout = ({ children, title = 'Admin Panel' }) => {
             </div>
           </div>
           
-          {/* Page content */}
           <main>
             {children}
           </main>
